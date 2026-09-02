@@ -283,16 +283,22 @@
 
   sectionBack.addEventListener('click', () => setSection('home'));
 
-  if (!history.state || history.state.pixelroom !== 'home'){
-    history.replaceState({ pixelroom:'home' }, '', location.href);
-  }
+  const landingUrl = location.href.split('#')[0];
+  history.replaceState({ pixelroom:'home' }, '', landingUrl);
+  history.pushState({ pixelroom:'home' }, '', landingUrl);
   function markEditorHistory(){
     if (history.state?.pixelroom !== 'editor') history.pushState({ pixelroom:'editor' }, '', '#editor');
   }
+  function returnToLanding(){
+    stage.classList.remove('active');
+    dropzone.style.display = '';
+    sectionChoices.forEach(choice => { choice.disabled = true; });
+    setSection('home');
+    history.replaceState({ pixelroom:'home' }, '', landingUrl);
+  }
   window.addEventListener('popstate', event => {
     if (stage.classList.contains('active') && event.state?.pixelroom !== 'editor'){
-      history.pushState({ pixelroom:'editor' }, '', '#editor');
-      setSection('home');
+      returnToLanding();
     }
   });
 
