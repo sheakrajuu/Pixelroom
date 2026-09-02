@@ -6,6 +6,10 @@
   // ============================================================
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
+  const savedSession = document.getElementById('savedSession');
+  const savedSessionPreview = document.getElementById('savedSessionPreview');
+  const savedSessionName = document.getElementById('savedSessionName');
+  const resumeBtn = document.getElementById('resumeBtn');
   const stage = document.getElementById('stage');
   const canvasScroll = document.getElementById('canvasScroll');
   const canvasWrap = document.getElementById('canvasWrap');
@@ -93,6 +97,8 @@
   let zoom = 1;
   let cropping = false;
   let sourceFile = null;
+  let savedSessionUrl = null;
+  let savedSessionFile = null;
 
   const SESSION_DB = 'pixelroom-session';
   const SESSION_STORE = 'image';
@@ -135,6 +141,7 @@
     sessionSaveTimer = setTimeout(() => {
       canvas.toBlob(blob => {
         if (!blob) return;
+        savedSessionFile = new File([blob], sourceFile?.name || 'image.png', { type:'image/png' });
         writeSession({
           blob,
           name: sourceFile?.name || 'image.png',
@@ -233,6 +240,10 @@
   }
 
   dropzone.addEventListener('click', () => fileInput.click());
+  resumeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (savedSessionFile) loadImageFile(savedSessionFile, activeSection === 'home' ? 'home' : activeSection);
+  });
   fileInput.addEventListener('change', e => loadImageFile(e.target.files[0]));
   let dragDepth = 0;
   dropzone.addEventListener('dragenter', e => {
@@ -273,6 +284,10 @@
     initialImageData = null;
     compareSnapshot = null;
     sourceFile = null;
+    savedSessionFile = null;
+    savedSession.hidden = true;
+    if (savedSessionUrl) URL.revokeObjectURL(savedSessionUrl);
+    savedSessionUrl = null;
     clearTimeout(sessionSaveTimer);
     deleteSession().catch(() => {});
     fileInput.value = '';
@@ -290,6 +305,16 @@
     if (history.state?.pixelroom !== 'editor') history.pushState({ pixelroom:'editor' }, '', '#editor');
   }
   function returnToLanding(){
+    canvas.toBlob(blob => {
+      if (blob){
+        savedSessionFile = new File([blob], sourceFile?.name || 'image.png', { type:'image/png' });
+        if (savedSessionUrl) URL.revokeObjectURL(savedSessionUrl);
+        savedSessionUrl = URL.createObjectURL(blob);
+        savedSessionPreview.src = savedSessionUrl;
+        savedSessionName.textContent = sourceFile?.name || 'Saved image';
+        savedSession.hidden = false;
+      }
+    }, 'image/png');
     stage.classList.remove('active');
     dropzone.style.display = '';
     sectionChoices.forEach(choice => { choice.disabled = true; });
@@ -1395,6 +1420,12 @@
         type: saved.type || saved.blob.type || 'image/png',
         lastModified: saved.lastModified || Date.now()
       });
+      savedSessionFile = file;
+      savedSessionName.textContent = saved.name || 'Saved image';
+      if (savedSessionUrl) URL.revokeObjectURL(savedSessionUrl);
+      savedSessionUrl = URL.createObjectURL(saved.blob);
+      savedSessionPreview.src = savedSessionUrl;
+      savedSession.hidden = false;
       loadImageFile(file, ['remove','metadata','resize'].includes(saved.section) ? saved.section : 'home');
     }catch(e){ /* no previous image session */ }
   })();

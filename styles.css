@@ -63,6 +63,10 @@ p.sub{ margin:0; font-size:0.95rem; color:var(--room-text); line-height:1.5; max
 .dropzone:hover, .dropzone.drag{ border-color:var(--safelight-strong); filter:brightness(1.12); }
 .dropzone div{ font-size:1.02rem; font-weight:600; }
 .dropzone span{ display:block; font-size:0.85rem; color:rgba(255,255,255,.72); margin-top:6px; }
+.saved-session{ display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; margin:18px auto 0; max-width:420px; }
+.saved-session img{ width:44px; height:44px; object-fit:cover; border:1px solid rgba(255,255,255,.55); }
+.saved-session span{ display:inline; margin:0; font-size:.75rem; color:rgba(255,255,255,.82); }
+.saved-session button{ padding:7px 10px; font-size:.75rem; }
 input[type="file"]{ display:none; }
 .section-choices{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
 .section-choice{ position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:7px; min-height:126px; overflow:hidden; text-align:left; padding:16px; border:1px solid #3a4447; border-radius:6px; background:linear-gradient(145deg,#20272a,#171c1e); color:var(--room-text); box-shadow:0 10px 26px rgba(0,0,0,.14); cursor:pointer; transition:transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease; }
