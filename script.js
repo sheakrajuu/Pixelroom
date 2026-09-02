@@ -94,6 +94,58 @@
   let cropping = false;
   let sourceFile = null;
 
+  const SESSION_DB = 'pixelroom-session';
+  const SESSION_STORE = 'image';
+  let sessionSaveTimer = null;
+
+  function openSessionDb(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(SESSION_DB, 1);
+      req.onupgradeneeded = () => { req.result.createObjectStore(SESSION_STORE); };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  function readSession(){
+    return openSessionDb().then(db => new Promise((resolve,reject)=>{
+      const req = db.transaction(SESSION_STORE, 'readonly').objectStore(SESSION_STORE).get('current');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+  function writeSession(record){
+    return openSessionDb().then(db => new Promise((resolve,reject)=>{
+      const tx = db.transaction(SESSION_STORE, 'readwrite');
+      tx.objectStore(SESSION_STORE).put(record, 'current');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function deleteSession(){
+    return openSessionDb().then(db => new Promise((resolve,reject)=>{
+      const tx = db.transaction(SESSION_STORE, 'readwrite');
+      tx.objectStore(SESSION_STORE).delete('current');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+  function saveSession(){
+    if (!originalImageData) return;
+    clearTimeout(sessionSaveTimer);
+    sessionSaveTimer = setTimeout(() => {
+      canvas.toBlob(blob => {
+        if (!blob) return;
+        writeSession({
+          blob,
+          name: sourceFile?.name || 'image.png',
+          type: sourceFile?.type || blob.type || 'image/png',
+          lastModified: sourceFile?.lastModified || Date.now(),
+          section: activeSection
+        }).catch(() => {});
+      }, 'image/png');
+    }, 120);
+  }
+
   function setStatus(msg){ statusEl.textContent = msg; }
 
   function updateResizeFields(){
@@ -118,6 +170,7 @@
     metadataSection.hidden = name !== 'metadata';
     resizeSection.hidden = name !== 'resize';
     if (name === 'resize') updateResizeFields();
+    saveSession();
   }
   sectionChoices.forEach(choice => choice.addEventListener('click', () => setSection(choice.dataset.section)));
 
@@ -128,7 +181,7 @@
     if (!file) return false;
     return file.type.startsWith('image/') || /\.(avif|gif|jpe?g|png|webp|bmp|svg)$/i.test(file.name || '');
   }
-  function loadImageFile(file){
+  function loadImageFile(file, restoredSection='home'){
     if (!isImageFile(file)){
       setStatus('Choose an image file such as JPG, PNG, or WEBP.');
       return;
@@ -161,7 +214,8 @@
       stage.classList.add('active');
       dropzone.style.display = 'none';
       sectionChoices.forEach(choice => { choice.disabled = false; });
-      setSection('home');
+      markEditorHistory();
+      setSection(restoredSection);
       fillBtn.disabled = true;
       downloadBtn.disabled = false;
       undoBtn.disabled = true;
@@ -172,6 +226,7 @@
       URL.revokeObjectURL(url);
 
       readMetadata(file, w, h);
+      saveSession();
     };
     img.onerror = function(){ setStatus('Could not read that file as an image.'); URL.revokeObjectURL(url); };
     img.src = url;
@@ -218,6 +273,8 @@
     initialImageData = null;
     compareSnapshot = null;
     sourceFile = null;
+    clearTimeout(sessionSaveTimer);
+    deleteSession().catch(() => {});
     fileInput.value = '';
     setStatus('Paint over the area to remove.');
     metaContent.innerHTML = '<p class="hint">Load a photo to see its embedded metadata here.</p>';
@@ -225,6 +282,19 @@
   });
 
   sectionBack.addEventListener('click', () => setSection('home'));
+
+  if (!history.state || history.state.pixelroom !== 'home'){
+    history.replaceState({ pixelroom:'home' }, '', location.href);
+  }
+  function markEditorHistory(){
+    if (history.state?.pixelroom !== 'editor') history.pushState({ pixelroom:'editor' }, '', '#editor');
+  }
+  window.addEventListener('popstate', event => {
+    if (stage.classList.contains('active') && event.state?.pixelroom !== 'editor'){
+      history.pushState({ pixelroom:'editor' }, '', '#editor');
+      setSection('home');
+    }
+  });
 
   // ============================================================
   // Panel tabs
@@ -469,6 +539,7 @@
     maskCtx.clearRect(0,0,canvas.width,canvas.height);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
     applyZoom();
+    saveSession();
     setStatus('Rotated. (Mask cleared.)');
   }
   rotateCW.addEventListener('click', () => rotate(1));
@@ -601,6 +672,7 @@
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
     zoom = 1; applyZoom(); updateZoomLabel();
     setTool('brush');
+    saveSession();
     setStatus('Cropped.');
   });
 
@@ -1090,6 +1162,7 @@
     maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     maskHistory = []; hasMask = false;
     fillBtn.disabled = true; undoBtn.disabled = true;
+    saveSession();
     setStatus('Selection removed. Inspect the result, then download.');
   });
 
@@ -1146,6 +1219,7 @@
     compareSnapshot = null; compareBtn.disabled = true;
     updateResizeFields();
     applyZoom();
+    saveSession();
     setStatus('Image resized to ' + width + ' × ' + height + ' pixels.');
   });
   async function readOriginalExifSegment(){
@@ -1306,6 +1380,18 @@
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+
+  (async function restoreSession(){
+    try{
+      const saved = await readSession();
+      if (!saved || !saved.blob) return;
+      const file = new File([saved.blob], saved.name || 'restored-image.png', {
+        type: saved.type || saved.blob.type || 'image/png',
+        lastModified: saved.lastModified || Date.now()
+      });
+      loadImageFile(file, ['remove','metadata','resize'].includes(saved.section) ? saved.section : 'home');
+    }catch(e){ /* no previous image session */ }
+  })();
 
   applyZoom();
 })();
