@@ -106,6 +106,7 @@
     drawing = false;
     panning = false;
     stage.dataset.section = name;
+    document.body.dataset.section = name;
     canvas.style.pointerEvents = name === 'remove' ? 'auto' : 'none';
     document.body.classList.toggle('app-editing', name !== 'home');
     if (name !== 'home') window.scrollTo({ top:0, behavior:'instant' });

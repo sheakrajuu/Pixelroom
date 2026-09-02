@@ -194,6 +194,8 @@ button:disabled{ opacity:0.45; cursor:not-allowed; }
 progress{ width:100%; accent-color:var(--safelight); height:8px; margin-top:8px; }
 footer{ max-width:960px; width:100%; margin-top:32px; padding:0 4px; display:flex; justify-content:space-between; gap:12px; font:0.72rem var(--mono); color:var(--room-text-dim); }
 .app-editing{ padding:0; overflow:hidden; }
+.app-editing[data-section="resize"],
+.app-editing[data-section="metadata"]{ min-height:0; padding-bottom:0; background:var(--paper); color:var(--ink); }
 .app-editing .site-nav,
 .app-editing .hero,
 .app-editing .about-grid,
