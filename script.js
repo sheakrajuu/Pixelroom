@@ -281,6 +281,7 @@
       canvas.classList.remove('crop-mode');
     }
     toolBrush.setAttribute('aria-pressed', String(brushEnabled));
+    toolBrush.classList.toggle('off', !brushEnabled);
     toolBrush.title = brushEnabled ? 'Brush on — tap to turn off and pan' : 'Brush off — tap to turn on';
     canvas.classList.toggle('pan-mode', name === 'off');
   }

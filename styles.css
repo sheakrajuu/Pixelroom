@@ -107,6 +107,10 @@ input[type="file"]{ display:none; }
 .tool-btn svg{ width:15px; height:15px; stroke:var(--ink); stroke-width:2.2; fill:none; }
 .tool-btn.active{ background:var(--safelight); border-color:var(--safelight); color:var(--safelight-ink); }
 .tool-btn.active svg{ stroke:var(--safelight-ink); }
+.tool-btn[aria-pressed="false"]{ background:transparent; border-color:var(--paper-line); color:var(--ink-soft); }
+.tool-btn[aria-pressed="false"] svg{ stroke:var(--ink-soft); }
+.tool-btn.off{ background:var(--paper-soft) !important; border-color:var(--paper-line) !important; color:var(--ink-soft) !important; }
+.tool-btn.off svg{ stroke:var(--ink-soft) !important; }
 .tool-btn:disabled{ opacity:0.4; cursor:not-allowed; }
 .zoom-group{ display:flex; align-items:center; gap:2px; margin-left:auto; }
 .zoom-label{ font-family:var(--mono); font-size:0.72rem; color:var(--ink-soft); min-width:38px; text-align:center; }
@@ -303,8 +307,10 @@ footer{ max-width:960px; width:100%; margin-top:32px; padding:0 4px; display:fle
   .download-details button{ width:100%; }
   .app-editing .stage.active{ padding:8px; }
   .app-editing{ overflow:visible; }
-  .app-editing .card{ height:auto; min-height:100svh; }
+  .app-editing .card{ height:auto; min-height:0; }
   .app-editing .stage.active{ height:auto; min-height:100svh; overflow:visible; padding-top:max(16px, env(safe-area-inset-top)); padding-bottom:max(24px, env(safe-area-inset-bottom)); }
+  .app-editing .stage.active[data-section="metadata"],
+  .app-editing .stage.active[data-section="resize"]{ height:auto; min-height:0; }
   .app-editing .toolbar{ position:static; flex:0 0 auto; }
   .app-editing .canvas-scroll{ flex-basis:42svh; min-height:120px; }
   .app-editing .controls{ margin-top:8px; }
