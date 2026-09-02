@@ -87,6 +87,7 @@
   let drawing = false;
   let hasMask = false;
   let tool = 'brush';
+  let activeSection = 'home';
   let zoom = 1;
   let cropping = false;
   let sourceFile = null;
@@ -99,6 +100,8 @@
     resizeHeight.value = canvas.height;
   }
   function setSection(name){
+    activeSection = name;
+    drawing = false;
     document.body.classList.toggle('app-editing', name !== 'home');
     if (name !== 'home') window.scrollTo({ top:0, behavior:'instant' });
     sectionChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.section === name));
@@ -230,10 +233,16 @@
   // Zoom
   // ============================================================
   function applyZoom(){
-    if (zoom === 1){ canvas.style.width = ''; }
+    if (zoom === 1){
+      canvas.style.width = '';
+      canvas.style.maxWidth = '100%';
+      canvas.style.maxHeight = '100%';
+    }
     else {
       const fitWidth = canvasScroll.clientWidth;
       canvas.style.width = Math.round(fitWidth * zoom) + 'px';
+      canvas.style.maxWidth = 'none';
+      canvas.style.maxHeight = 'none';
     }
     canvas.style.height = 'auto';
   }
@@ -312,7 +321,7 @@
 
   let lastX = 0, lastY = 0;
   function startDraw(e){
-    if (!originalImageData || cropping) return;
+    if (!originalImageData || activeSection !== 'remove' || cropping) return;
     e.preventDefault();
     drawing = true;
     maskHistory.push(maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height));
@@ -326,7 +335,7 @@
     undoBtn.disabled = false;
   }
   function moveDraw(e){
-    if (!drawing) return;
+    if (!drawing || activeSection !== 'remove') return;
     e.preventDefault();
     const p = getPos(e);
     paintLine(lastX,lastY,p.x,p.y);
@@ -336,6 +345,7 @@
   function endDraw(){
     if (!drawing) return;
     drawing = false;
+    if (activeSection !== 'remove') return;
     hasMask = maskHasContent();
     fillBtn.disabled = !hasMask;
   }
