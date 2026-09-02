@@ -75,8 +75,15 @@
   // ============================================================
   // Loading an image
   // ============================================================
+  function isImageFile(file){
+    if (!file) return false;
+    return file.type.startsWith('image/') || /\.(avif|gif|jpe?g|png|webp|bmp|svg)$/i.test(file.name || '');
+  }
   function loadImageFile(file){
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!isImageFile(file)){
+      setStatus('Choose an image file such as JPG, PNG, or WEBP.');
+      return;
+    }
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = function(){
@@ -118,9 +125,36 @@
 
   dropzone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', e => loadImageFile(e.target.files[0]));
-  ['dragover','dragenter'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('drag'); }));
-  ['dragleave','drop'].forEach(ev => dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('drag'); }));
-  dropzone.addEventListener('drop', e => { e.preventDefault(); loadImageFile(e.dataTransfer.files[0]); });
+  let dragDepth = 0;
+  dropzone.addEventListener('dragenter', e => {
+    e.preventDefault();
+    dragDepth++;
+    dropzone.classList.add('drag');
+  });
+  dropzone.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  dropzone.addEventListener('dragleave', e => {
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) dropzone.classList.remove('drag');
+  });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropzone.classList.remove('drag');
+    loadImageFile(e.dataTransfer.files[0]);
+  });
+  document.addEventListener('dragover', e => {
+    if (Array.from(e.dataTransfer?.types || []).includes('Files')) e.preventDefault();
+  });
+  document.addEventListener('drop', e => {
+    if (Array.from(e.dataTransfer?.types || []).includes('Files')){
+      e.preventDefault();
+      if (!dropzone.contains(e.target)) setStatus('Drop the image in the highlighted upload area.');
+    }
+  });
 
   clearBtn.addEventListener('click', () => {
     stage.classList.remove('active');
