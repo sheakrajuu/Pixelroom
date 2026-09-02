@@ -113,6 +113,7 @@ input[type="file"]{ display:none; }
 
 .canvas-scroll{
   position:relative; width:100%; max-height:66vh; overflow:auto;
+  scrollbar-width:none;
   border:1px solid var(--paper-line); border-radius:2px; background:
     linear-gradient(45deg,#e2d6bb 25%,transparent 25%) -10px 0/20px 20px,
     linear-gradient(-45deg,#e2d6bb 25%,transparent 25%) -10px 0/20px 20px,
@@ -120,9 +121,12 @@ input[type="file"]{ display:none; }
     linear-gradient(-45deg,transparent 75%,#e2d6bb 75%) -10px 0/20px 20px,
     var(--paper-soft);
 }
-.canvas-wrap{ position:relative; line-height:0; touch-action:none; }
+.canvas-scroll::-webkit-scrollbar{ width:0; height:0; }
+.canvas-wrap{ position:relative; line-height:0; touch-action:pan-x pan-y; }
 canvas#canvas{ display:block; cursor:crosshair; width:100%; height:auto; }
 canvas#canvas.crop-mode{ cursor:default; }
+canvas#canvas.pan-mode{ cursor:grab; }
+canvas#canvas.pan-mode:active{ cursor:grabbing; }
 
 #cropBox{
   position:absolute; border:1.5px dashed #fff; outline:1.5px dashed var(--safelight);
@@ -195,9 +199,9 @@ footer{ max-width:960px; width:100%; margin-top:32px; padding:0 4px; display:fle
 .app-editing .card{ max-width:none; height:100dvh; }
 .app-editing .stage.active{ height:100dvh; overflow-y:scroll; overflow-x:hidden; scrollbar-gutter:stable; border:0; border-radius:0; padding:12px max(12px, calc((100vw - 1120px) / 2)); display:flex; flex-direction:column; box-shadow:none; }
 .app-editing .section-back-wrap{ flex:0 0 auto; }
-.app-editing .canvas-scroll{ flex:0 0 min(56vh, 620px); min-height:160px; max-height:none; overflow:auto; display:flex; align-items:flex-start; justify-content:center; }
+.app-editing .canvas-scroll{ flex:0 0 min(56vh, 620px); min-height:160px; max-height:none; overflow:auto; display:flex; align-items:flex-start; justify-content:flex-start; }
 .app-editing .canvas-wrap{ width:100%; height:100%; display:flex; align-items:flex-start; justify-content:center; flex:0 0 auto; }
-.app-editing canvas#canvas{ width:auto; max-width:100%; max-height:100%; object-fit:contain; }
+.app-editing canvas#canvas{ width:auto; max-width:100%; max-height:100%; margin:0 auto; object-fit:contain; }
 .app-editing .section-tools{ flex:0 0 auto; }
 .app-editing .panel-tabs,
 .app-editing .panel{ flex:0 0 auto; }

@@ -85,8 +85,10 @@
   let initialImageData = null;
   let originalImageData = null; // current canvas pixels *without* the live mask overlay
   let drawing = false;
+  let panning = false;
   let hasMask = false;
   let tool = 'brush';
+  let brushEnabled = true;
   let activeSection = 'home';
   let zoom = 1;
   let cropping = false;
@@ -102,6 +104,7 @@
   function setSection(name){
     activeSection = name;
     drawing = false;
+    panning = false;
     stage.dataset.section = name;
     canvas.style.pointerEvents = name === 'remove' ? 'auto' : 'none';
     document.body.classList.toggle('app-editing', name !== 'home');
@@ -152,6 +155,7 @@
       compareSnapshot = { w, h, data: initialImageData };
       hasMask = false;
       zoom = 1;
+      applyZoom();
       updateZoomLabel();
       stage.classList.add('active');
       dropzone.style.display = 'none';
@@ -236,13 +240,18 @@
   // ============================================================
   function applyZoom(){
     if (zoom === 1){
+      canvasWrap.style.width = '100%';
+      canvasWrap.style.height = '100%';
       canvas.style.width = '';
       canvas.style.maxWidth = '100%';
       canvas.style.maxHeight = '100%';
     }
     else {
       const fitWidth = canvasScroll.clientWidth;
-      canvas.style.width = Math.round(fitWidth * zoom) + 'px';
+      const scaledWidth = Math.round(fitWidth * zoom);
+      canvasWrap.style.width = scaledWidth + 'px';
+      canvasWrap.style.height = 'auto';
+      canvas.style.width = scaledWidth + 'px';
       canvas.style.maxWidth = 'none';
       canvas.style.maxHeight = 'none';
     }
@@ -258,6 +267,7 @@
   function setTool(name){
     if (cropping && name !== 'crop') exitCropMode(false);
     tool = name;
+    brushEnabled = name === 'brush';
     [toolBrush, toolEraser, toolCrop].forEach(b => b.classList.remove('active'));
     if (name === 'brush') toolBrush.classList.add('active');
     if (name === 'eraser') toolEraser.classList.add('active');
@@ -270,8 +280,11 @@
       cropActions.style.display = 'none';
       canvas.classList.remove('crop-mode');
     }
+    toolBrush.setAttribute('aria-pressed', String(brushEnabled));
+    toolBrush.title = brushEnabled ? 'Brush on — tap to turn off and pan' : 'Brush off — tap to turn on';
+    canvas.classList.toggle('pan-mode', name === 'off');
   }
-  toolBrush.addEventListener('click', () => setTool('brush'));
+  toolBrush.addEventListener('click', () => setTool(brushEnabled ? 'off' : 'brush'));
   toolEraser.addEventListener('click', () => setTool('eraser'));
   toolCrop.addEventListener('click', () => setTool(tool === 'crop' ? 'brush' : 'crop'));
 
@@ -322,8 +335,17 @@
   }
 
   let lastX = 0, lastY = 0;
+  let lastPanX = 0, lastPanY = 0;
   function startDraw(e){
     if (!originalImageData || activeSection !== 'remove' || cropping) return;
+    if (tool === 'off'){
+      e.preventDefault();
+      panning = true;
+      lastPanX = e.clientX;
+      lastPanY = e.clientY;
+      canvas.setPointerCapture?.(e.pointerId);
+      return;
+    }
     e.preventDefault();
     drawing = true;
     maskHistory.push(maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height));
@@ -337,6 +359,17 @@
     undoBtn.disabled = false;
   }
   function moveDraw(e){
+    if (panning){
+      if (activeSection !== 'remove') return;
+      e.preventDefault();
+      const dx = e.clientX - lastPanX;
+      const dy = e.clientY - lastPanY;
+      canvasScroll.scrollLeft -= dx;
+      canvasScroll.scrollTop -= dy;
+      lastPanX = e.clientX;
+      lastPanY = e.clientY;
+      return;
+    }
     if (!drawing || activeSection !== 'remove') return;
     e.preventDefault();
     const p = getPos(e);
@@ -345,6 +378,10 @@
     redrawWithMask();
   }
   function endDraw(){
+    if (panning){
+      panning = false;
+      return;
+    }
     if (!drawing) return;
     drawing = false;
     if (activeSection !== 'remove') return;
