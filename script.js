@@ -27,6 +27,13 @@
   const clearBtn = document.getElementById('clearBtn');
   const downloadBtn = document.getElementById('downloadBtn');
   const downloadFormat = document.getElementById('downloadFormat');
+  const stripMetadata = document.getElementById('stripMetadata');
+  const previewModal = document.getElementById('previewModal');
+  const previewCanvas = document.getElementById('previewCanvas');
+  const previewClose = document.getElementById('previewClose');
+  const previewCancel = document.getElementById('previewCancel');
+  const previewDownload = document.getElementById('previewDownload');
+  const previewNote = document.querySelector('.preview-note');
   const engineSelect = document.getElementById('engineSelect');
   const statusEl = document.getElementById('status');
 
@@ -63,12 +70,14 @@
   let maskHistory = [];      // in-progress brush stroke undo (ImageData of maskCanvas)
   let actionHistory = [];    // committed-action undo (crop / rotate / fill) — full canvas snapshots
   let compareSnapshot = null;
+  let initialImageData = null;
   let originalImageData = null; // current canvas pixels *without* the live mask overlay
   let drawing = false;
   let hasMask = false;
   let tool = 'brush';
   let zoom = 1;
   let cropping = false;
+  let sourceFile = null;
 
   function setStatus(msg){ statusEl.textContent = msg; }
 
@@ -85,6 +94,7 @@
       return;
     }
     const img = new Image();
+    sourceFile = file;
     const url = URL.createObjectURL(file);
     img.onload = function(){
       const maxDim = 2200;
@@ -99,10 +109,11 @@
       ctx.clearRect(0,0,w,h);
       ctx.drawImage(img,0,0,w,h);
       originalImageData = ctx.getImageData(0,0,w,h);
+      initialImageData = ctx.getImageData(0,0,w,h);
       maskCtx.clearRect(0,0,w,h);
       maskHistory = [];
       actionHistory = [];
-      compareSnapshot = null;
+      compareSnapshot = { w, h, data: initialImageData };
       hasMask = false;
       zoom = 1;
       updateZoomLabel();
@@ -112,7 +123,7 @@
       downloadBtn.disabled = false;
       undoBtn.disabled = true;
       undoActionBtn.disabled = true;
-      compareBtn.disabled = true;
+      compareBtn.disabled = !compareSnapshot;
       setTool('brush');
       setStatus('Paint over the area to remove, then choose Fill.');
       URL.revokeObjectURL(url);
@@ -160,6 +171,9 @@
     stage.classList.remove('active');
     dropzone.style.display = '';
     originalImageData = null;
+    initialImageData = null;
+    compareSnapshot = null;
+    sourceFile = null;
     fileInput.value = '';
     setStatus('Paint over the area to remove.');
     metaContent.innerHTML = '<p class="hint">Load a photo to see its embedded metadata here.</p>';
@@ -271,7 +285,7 @@
     lastX = p.x; lastY = p.y;
     paintDot(p.x,p.y);
     redrawWithMask();
-    setStatus('Brushing mask — release and choose Fill when ready.');
+    setStatus('Selection marked. Click Remove selection to apply the fill.');
     undoBtn.disabled = false;
   }
   function moveDraw(e){
@@ -310,11 +324,14 @@
   // Committed-action history (crop / rotate / fill) + compare
   // ============================================================
   function pushActionSnapshot(){
-    actionHistory.push({ w: canvas.width, h: canvas.height, data: originalImageData });
+    actionHistory.push({
+      w: canvas.width,
+      h: canvas.height,
+      data: new ImageData(new Uint8ClampedArray(originalImageData.data), originalImageData.width, originalImageData.height),
+      compare: compareSnapshot && { w: compareSnapshot.w, h: compareSnapshot.h, data: new ImageData(new Uint8ClampedArray(compareSnapshot.data.data), compareSnapshot.data.width, compareSnapshot.data.height) }
+    });
     if (actionHistory.length > 8) actionHistory.shift();
     undoActionBtn.disabled = false;
-    compareSnapshot = { w: canvas.width, h: canvas.height, data: originalImageData };
-    compareBtn.disabled = false;
   }
   undoActionBtn.addEventListener('click', () => {
     if (!actionHistory.length) return;
@@ -323,10 +340,13 @@
     maskCanvas.width = snap.w; maskCanvas.height = snap.h;
     ctx.putImageData(snap.data, 0, 0);
     originalImageData = snap.data;
+    compareSnapshot = snap.compare;
     maskCtx.clearRect(0,0,snap.w,snap.h);
     maskHistory = []; hasMask = false;
     fillBtn.disabled = true; undoBtn.disabled = true;
+    applyZoom();
     if (!actionHistory.length) undoActionBtn.disabled = true;
+    compareBtn.disabled = !compareSnapshot || compareSnapshot.w !== canvas.width || compareSnapshot.h !== canvas.height;
     setStatus('Reverted last action.');
   });
   compareBtn.addEventListener('mousedown', showCompare);
@@ -335,7 +355,7 @@
   compareBtn.addEventListener('mouseleave', hideCompare);
   compareBtn.addEventListener('touchend', hideCompare);
   function showCompare(){
-    if (!compareSnapshot) return;
+    if (!compareSnapshot || compareSnapshot.w !== canvas.width || compareSnapshot.h !== canvas.height) return;
     ctx.putImageData(compareSnapshot.data, 0, 0);
   }
   function hideCompare(){
@@ -359,6 +379,7 @@
     canvas.width = h; canvas.height = w;
     ctx.drawImage(tmp, 0, 0);
     originalImageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    if (compareSnapshot){ compareSnapshot = { w: canvas.width, h: canvas.height, data: rotateImageData(compareSnapshot.data, dir) }; }
     maskCanvas.width = canvas.width; maskCanvas.height = canvas.height;
     maskCtx.clearRect(0,0,canvas.width,canvas.height);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
@@ -367,6 +388,29 @@
   }
   rotateCW.addEventListener('click', () => rotate(1));
   rotateCCW.addEventListener('click', () => rotate(-1));
+
+  function rotateImageData(imageData, dir){
+    const source = document.createElement('canvas');
+    source.width = imageData.width; source.height = imageData.height;
+    source.getContext('2d').putImageData(imageData, 0, 0);
+    const rotated = document.createElement('canvas');
+    rotated.width = imageData.height; rotated.height = imageData.width;
+    const rotatedContext = rotated.getContext('2d');
+    rotatedContext.translate(dir === 1 ? rotated.width : 0, dir === 1 ? 0 : rotated.height);
+    rotatedContext.rotate(dir === 1 ? Math.PI / 2 : -Math.PI / 2);
+    rotatedContext.drawImage(source, 0, 0);
+    return rotatedContext.getImageData(0, 0, rotated.width, rotated.height);
+  }
+
+  function cropImageData(imageData, sx, sy, sw, sh){
+    const source = document.createElement('canvas');
+    source.width = imageData.width; source.height = imageData.height;
+    source.getContext('2d').putImageData(imageData, 0, 0);
+    const cropped = document.createElement('canvas');
+    cropped.width = sw; cropped.height = sh;
+    cropped.getContext('2d').drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
+    return cropped.getContext('2d').getImageData(0, 0, sw, sh);
+  }
 
   // ============================================================
   // Crop
@@ -466,6 +510,7 @@
     canvas.width = sw; canvas.height = sh;
     ctx.drawImage(tmp, 0, 0);
     originalImageData = ctx.getImageData(0,0,sw,sh);
+    if (compareSnapshot){ compareSnapshot = { w: sw, h: sh, data: cropImageData(compareSnapshot.data, sx, sy, sw, sh) }; }
     maskCanvas.width = sw; maskCanvas.height = sh;
     maskCtx.clearRect(0,0,sw,sh);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
@@ -923,22 +968,73 @@
     maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     maskHistory = []; hasMask = false;
     fillBtn.disabled = true; undoBtn.disabled = true;
-    setStatus('Done. Brush again for another spot, or download.');
+    setStatus('Selection removed. Inspect the result, then download.');
   });
 
   // ============================================================
   // Download
   // ============================================================
-  downloadBtn.addEventListener('click', () => {
-    const fmt = downloadFormat.value;
+  function createCleanCanvas(){
+    const cleanCanvas = document.createElement('canvas');
+    cleanCanvas.width = canvas.width;
+    cleanCanvas.height = canvas.height;
+    cleanCanvas.getContext('2d').putImageData(originalImageData, 0, 0);
+    return cleanCanvas;
+  }
+  async function openPreview(){
+    if (!originalImageData) return;
+    const format = downloadFormat.value;
+    previewCanvas.width = canvas.width;
+    previewCanvas.height = canvas.height;
+    previewCanvas.getContext('2d').putImageData(originalImageData, 0, 0);
+    previewNote.textContent = stripMetadata.checked || format !== 'jpeg'
+      ? 'Metadata will be removed from this download.'
+      : 'Original JPEG metadata will be kept where available.';
+    previewModal.hidden = false;
+    previewClose.focus();
+  }
+  downloadBtn.addEventListener('click', openPreview);
+  async function readOriginalExifSegment(){
+    if (!sourceFile || !(/jpe?g/i.test(sourceFile.type) || /\.jpe?g$/i.test(sourceFile.name || ''))) return null;
+    const bytes = new Uint8Array(await sourceFile.arrayBuffer());
+    if (bytes[0] !== 0xFF || bytes[1] !== 0xD8) return null;
+    let offset = 2;
+    while (offset + 4 < bytes.length && bytes[offset] === 0xFF){
+      const marker = bytes[offset + 1];
+      if (marker === 0xDA || marker === 0xD9) break;
+      const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+      if (marker === 0xE1 && bytes[offset + 4] === 0x45 && bytes[offset + 5] === 0x78 && bytes[offset + 6] === 0x69 && bytes[offset + 7] === 0x66){
+        return bytes.slice(offset, offset + 2 + segmentLength);
+      }
+      offset += 2 + segmentLength;
+    }
+    return null;
+  }
+  async function createExportBlob(fmt){
     const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const dataUrl = createCleanCanvas().toDataURL(mime, fmt === 'jpeg' ? 0.92 : undefined);
+    const output = new Uint8Array(await (await fetch(dataUrl)).arrayBuffer());
+    if (fmt !== 'jpeg' || stripMetadata.checked) return new Blob([output], {type:mime});
+    const exif = await readOriginalExifSegment();
+    return exif ? new Blob([output.slice(0,2), exif, output.slice(2)], {type:mime}) : new Blob([output], {type:mime});
+  }
+  function closePreview(){ previewModal.hidden = true; }
+  previewClose.addEventListener('click', closePreview);
+  previewCancel.addEventListener('click', closePreview);
+  previewModal.addEventListener('click', e => { if (e.target === previewModal) closePreview(); });
+  previewDownload.addEventListener('click', async () => {
+    const fmt = downloadFormat.value;
     const ext = fmt === 'jpeg' ? 'jpg' : 'png';
+    previewDownload.disabled = true;
+    const blob = await createExportBlob(fmt);
     const link = document.createElement('a');
     link.download = 'inpainted.' + ext;
-    link.href = canvas.toDataURL(mime, fmt === 'jpeg' ? 0.92 : undefined);
+    link.href = URL.createObjectURL(blob);
     link.click();
+    URL.revokeObjectURL(link.href);
+    previewDownload.disabled = false;
+    closePreview();
   });
-
   // ============================================================
   // Metadata (EXIF) viewer
   // ============================================================

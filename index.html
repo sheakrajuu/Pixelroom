@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Pixelroom — private image cleanup</title>
-<link rel="stylesheet" href="styles.css?v=20260902.1">
+<link rel="stylesheet" href="styles.css?v=20260902.3">
 </head>
 <body>
 
@@ -99,16 +99,16 @@
     <div class="row">
       <div class="status" id="status">Paint over the area to remove.</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
-        <select id="engineSelect">
-          <option value="quick">Quick fill (patch-match)</option>
-          <option value="lama">AI fill (LaMa)</option>
+        <select id="engineSelect" aria-label="Removal method">
+          <option value="quick">Quick fill · simple backgrounds</option>
+          <option value="lama">AI fill · logos and detail</option>
         </select>
-        <button id="fillBtn" disabled>Fill</button>
+        <button id="fillBtn" disabled>Remove selection</button>
         <select id="downloadFormat">
           <option value="png">PNG</option>
           <option value="jpeg">JPEG</option>
         </select>
-        <label class="metadata-toggle" title="Canvas exports always remove embedded metadata"><input type="checkbox" id="stripMetadata" checked disabled> Remove metadata</label>
+        <label class="metadata-toggle" title="Remove camera and location metadata from the export"><input type="checkbox" id="stripMetadata"> Remove metadata</label>
         <button class="secondary" id="downloadBtn" disabled>Download</button>
       </div>
     </div>
@@ -147,11 +147,23 @@
 
     <div class="panel" id="metaPanel">
       <div id="metaContent"><p class="hint">Load a photo to see its embedded metadata here.</p></div>
-      <p class="hint">Exports are redrawn without embedded metadata.</p>
+      <p class="hint">Enable Remove metadata before exporting if you want a clean file without embedded metadata.</p>
     </div>
 
   </div>
 </main>
+
+<div class="preview-modal" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" hidden>
+  <div class="preview-dialog">
+    <div class="preview-header">
+      <div><p class="eyebrow">FINAL REVIEW</p><h2 id="previewTitle">Your edited image is ready</h2></div>
+      <button class="preview-close secondary small" id="previewClose" title="Close preview" aria-label="Close preview">×</button>
+    </div>
+    <div class="preview-frame"><canvas id="previewCanvas"></canvas></div>
+    <p class="preview-note">Metadata setting applied.</p>
+    <div class="preview-actions"><button class="secondary" id="previewCancel">Keep editing</button><button id="previewDownload">Download image</button></div>
+  </div>
+</div>
 
 <section class="about-grid" id="guide" aria-label="About Pixelroom">
   <article id="tools">
@@ -167,7 +179,7 @@
   <article id="privacy">
     <p class="eyebrow">PRIVACY</p>
     <h2>Your image stays with you</h2>
-    <p>Photos and masks are processed locally in this browser. Nothing is uploaded, and exported files are redrawn without EXIF metadata such as GPS data.</p>
+    <p>Photos and masks are processed locally in this browser. Nothing is uploaded. When enabled, Remove metadata strips EXIF details such as GPS data from the export.</p>
   </article>
 </section>
 
@@ -177,6 +189,6 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
-<script src="script.js?v=20260902.1"></script>
+<script src="script.js?v=20260902.4"></script>
 </body>
 </html>
