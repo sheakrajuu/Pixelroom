@@ -1,0 +1,17 @@
+{
+  "name": "Pixelroom",
+  "short_name": "Pixelroom",
+  "description": "Private browser-based photo editing.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111417",
+  "theme_color": "#111417",
+  "icons": [
+    {
+      "src": "./favicon.svg?v=20260902.2",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

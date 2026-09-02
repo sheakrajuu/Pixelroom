@@ -87,6 +87,8 @@ Large model downloads can take time and may be blocked by cross-origin restricti
 index.html   Main editor interface
 script.js    Image editing, inpainting, history, export, and metadata logic
 styles.css   Layout, responsive styles, and editor appearance
+favicon.svg  Pixelroom star app icon
+site.webmanifest  Installable web-app configuration
 README.md    Project documentation
 ```
 

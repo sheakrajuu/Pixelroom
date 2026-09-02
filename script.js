@@ -725,6 +725,7 @@
 
   const Model = {
     session: null, inputNames: [], outputNames: [], imageInputName: null, maskInputName: null,
+    inputWidth: null, inputHeight: null,
     async loadFromBytes(bytes){
       if (!window.ort) throw new Error('ONNX Runtime failed to load from the CDN — check your network connection.');
       modelStatus.textContent = 'Initializing runtime…';
@@ -734,13 +735,18 @@
       this.outputNames = this.session.outputNames;
       this.imageInputName = this.inputNames.find(n => /img|image|rgb/i.test(n)) || this.inputNames[0];
       this.maskInputName = this.inputNames.find(n => /mask/i.test(n)) || this.inputNames.find(n => n !== this.imageInputName) || this.inputNames[0];
+      const imageMetadata = this.session.inputMetadata?.[this.imageInputName];
+      const dimensions = imageMetadata?.dimensions || imageMetadata?.shape || [];
+      this.inputHeight = Number(dimensions[2]) || null;
+      this.inputWidth = Number(dimensions[3]) || null;
     }
   };
 
   function setModelReady(){
     modelBadge.textContent = 'Model ready';
     modelBadge.className = 'badge good';
-    modelStatus.textContent = 'Inputs: ' + Model.inputNames.join(', ') + '  →  output: ' + Model.outputNames[0];
+    const inputSize = Model.inputWidth && Model.inputHeight ? ` (${Model.inputWidth} × ${Model.inputHeight})` : '';
+    modelStatus.textContent = 'Inputs: ' + Model.inputNames.join(', ') + inputSize + '  →  output: ' + Model.outputNames[0];
     engineSelect.value = 'lama';
   }
 
@@ -823,12 +829,22 @@
   async function runLamaOnRegion(bbox){
     const MAXP = 768;
     let rw = bbox.w, rh = bbox.h;
-    if (Math.max(rw,rh) > MAXP){
+    let pw8, ph8;
+    if (Model.inputWidth && Model.inputHeight){
+      rw = Model.inputWidth;
+      rh = Model.inputHeight;
+      pw8 = Model.inputWidth;
+      ph8 = Model.inputHeight;
+    } else if (Math.max(rw,rh) > MAXP){
       const scale = MAXP / Math.max(rw,rh);
       rw = Math.max(8, Math.round(rw*scale));
       rh = Math.max(8, Math.round(rh*scale));
+      pw8 = nextMultipleOf8(rw);
+      ph8 = nextMultipleOf8(rh);
+    } else {
+      pw8 = nextMultipleOf8(rw);
+      ph8 = nextMultipleOf8(rh);
     }
-    const pw8 = nextMultipleOf8(rw), ph8 = nextMultipleOf8(rh);
 
     const patchCanvas = document.createElement('canvas');
     patchCanvas.width = pw8; patchCanvas.height = ph8;
