@@ -50,7 +50,7 @@
   const cropCancel = document.getElementById('cropCancel');
 
   const panelTabs = document.querySelectorAll('.panel-tab');
-  const panels = { fillPanel: document.getElementById('fillPanel'), modelPanel: document.getElementById('modelPanel'), metaPanel: document.getElementById('metaPanel') };
+  const panels = { fillPanel: document.getElementById('fillPanel'), modelPanel: document.getElementById('modelPanel') };
 
   const modelBadge = document.getElementById('modelBadge');
   const chooseModelBtn = document.getElementById('chooseModelBtn');
@@ -61,12 +61,24 @@
   const modelProgress = document.getElementById('modelProgress');
   const modelStatus = document.getElementById('modelStatus');
   const metaContent = document.getElementById('metaContent');
+  const sectionChoices = document.querySelectorAll('.section-choice');
+  const sectionRemove = document.querySelectorAll('.section-remove');
+  const sectionHome = document.getElementById('sectionHome');
+  const sectionBack = document.getElementById('sectionBack');
+  const metadataSection = document.getElementById('metadataSection');
+  const resizeSection = document.getElementById('resizeSection');
+  const metadataDownloadBtn = document.getElementById('metadataDownloadBtn');
+  const resizeWidth = document.getElementById('resizeWidth');
+  const resizeHeight = document.getElementById('resizeHeight');
+  const resizeKeepRatio = document.getElementById('resizeKeepRatio');
+  const resizeApply = document.getElementById('resizeApply');
+  const resizeReset = document.getElementById('resizeReset');
 
   // ============================================================
   // App state
   // ============================================================
   let maskCanvas = document.createElement('canvas');
-  let maskCtx = maskCanvas.getContext('2d');
+  let maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
   let maskHistory = [];      // in-progress brush stroke undo (ImageData of maskCanvas)
   let actionHistory = [];    // committed-action undo (crop / rotate / fill) — full canvas snapshots
   let compareSnapshot = null;
@@ -80,6 +92,25 @@
   let sourceFile = null;
 
   function setStatus(msg){ statusEl.textContent = msg; }
+
+  function updateResizeFields(){
+    if (!originalImageData) return;
+    resizeWidth.value = canvas.width;
+    resizeHeight.value = canvas.height;
+  }
+  function setSection(name){
+    document.body.classList.toggle('app-editing', name !== 'home');
+    if (name !== 'home') window.scrollTo({ top:0, behavior:'instant' });
+    sectionChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.section === name));
+    sectionChoices.forEach(choice => { choice.parentElement.hidden = name !== 'home'; });
+    sectionHome.hidden = name !== 'home';
+    sectionBack.hidden = name === 'home';
+    sectionRemove.forEach(element => { element.hidden = name !== 'remove'; });
+    metadataSection.hidden = name !== 'metadata';
+    resizeSection.hidden = name !== 'resize';
+    if (name === 'resize') updateResizeFields();
+  }
+  sectionChoices.forEach(choice => choice.addEventListener('click', () => setSection(choice.dataset.section)));
 
   // ============================================================
   // Loading an image
@@ -119,6 +150,8 @@
       updateZoomLabel();
       stage.classList.add('active');
       dropzone.style.display = 'none';
+      sectionChoices.forEach(choice => { choice.disabled = false; });
+      setSection('home');
       fillBtn.disabled = true;
       downloadBtn.disabled = false;
       undoBtn.disabled = true;
@@ -170,6 +203,7 @@
   clearBtn.addEventListener('click', () => {
     stage.classList.remove('active');
     dropzone.style.display = '';
+    sectionChoices.forEach(choice => { choice.disabled = true; });
     originalImageData = null;
     initialImageData = null;
     compareSnapshot = null;
@@ -177,7 +211,10 @@
     fileInput.value = '';
     setStatus('Paint over the area to remove.');
     metaContent.innerHTML = '<p class="hint">Load a photo to see its embedded metadata here.</p>';
+    setSection('home');
   });
+
+  sectionBack.addEventListener('click', () => setSection('home'));
 
   // ============================================================
   // Panel tabs
@@ -234,8 +271,7 @@
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    const point = e.touches ? e.touches[0] : e;
-    return { x: (point.clientX - rect.left) * scaleX, y: (point.clientY - rect.top) * scaleY };
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   }
 
   function paintDot(x,y){
@@ -282,6 +318,7 @@
     maskHistory.push(maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height));
     if (maskHistory.length > 20) maskHistory.shift();
     const p = getPos(e);
+    canvas.setPointerCapture?.(e.pointerId);
     lastX = p.x; lastY = p.y;
     paintDot(p.x,p.y);
     redrawWithMask();
@@ -303,13 +340,10 @@
     fillBtn.disabled = !hasMask;
   }
 
-  canvas.addEventListener('mousedown', startDraw);
-  canvas.addEventListener('mousemove', moveDraw);
-  window.addEventListener('mouseup', endDraw);
-  canvas.addEventListener('touchstart', startDraw, {passive:false});
-  canvas.addEventListener('touchmove', moveDraw, {passive:false});
-  canvas.addEventListener('touchend', endDraw);
-  canvas.addEventListener('touchcancel', endDraw);
+  canvas.addEventListener('pointerdown', startDraw);
+  canvas.addEventListener('pointermove', moveDraw);
+  canvas.addEventListener('pointerup', endDraw);
+  canvas.addEventListener('pointercancel', endDraw);
 
   undoBtn.addEventListener('click', () => {
     if (!maskHistory.length) return;
@@ -684,9 +718,9 @@
   }
 
   // ============================================================
-  // AI fill — LaMa via ONNX Runtime Web
+  // AI fill via ONNX Runtime Web
   // ============================================================
-  const DB_NAME = 'lama-inpaint-cache', STORE = 'models';
+  const DB_NAME = 'onnx-inpaint-cache', STORE = 'models';
   function idbOpen(){
     return new Promise((resolve,reject)=>{
       const req = indexedDB.open(DB_NAME,1);
@@ -725,7 +759,8 @@
 
   const Model = {
     session: null, inputNames: [], outputNames: [], imageInputName: null, maskInputName: null,
-    inputWidth: null, inputHeight: null,
+    imageShape: null, maskShape: null, outputShape: null, inputWidth: null, inputHeight: null,
+    imageLayout: 'nchw', maskLayout: 'nchw', hasMask: false,
     async loadFromBytes(bytes){
       if (!window.ort) throw new Error('ONNX Runtime failed to load from the CDN — check your network connection.');
       modelStatus.textContent = 'Initializing runtime…';
@@ -733,20 +768,28 @@
       this.session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'] });
       this.inputNames = this.session.inputNames;
       this.outputNames = this.session.outputNames;
-      this.imageInputName = this.inputNames.find(n => /img|image|rgb/i.test(n)) || this.inputNames[0];
-      this.maskInputName = this.inputNames.find(n => /mask/i.test(n)) || this.inputNames.find(n => n !== this.imageInputName) || this.inputNames[0];
-      const imageMetadata = this.session.inputMetadata?.[this.imageInputName];
-      const dimensions = imageMetadata?.dimensions || imageMetadata?.shape || [];
-      this.inputHeight = Number(dimensions[2]) || null;
-      this.inputWidth = Number(dimensions[3]) || null;
+      const metadata = this.session.inputMetadata || {};
+      const shapeFor = name => metadata[name]?.dimensions || metadata[name]?.shape || [];
+      const rank4 = this.inputNames.filter(name => shapeFor(name).length === 4);
+      this.imageInputName = this.inputNames.find(n => /img|image|rgb|input/i.test(n)) || rank4[0] || this.inputNames[0];
+      this.maskInputName = this.inputNames.find(n => /mask|hole/i.test(n)) || this.inputNames.find(n => n !== this.imageInputName && shapeFor(n).length === 4) || null;
+      this.imageShape = shapeFor(this.imageInputName);
+      this.maskShape = this.maskInputName ? shapeFor(this.maskInputName) : null;
+      this.outputShape = this.session.outputMetadata?.[this.outputNames[0]]?.dimensions || this.session.outputMetadata?.[this.outputNames[0]]?.shape || null;
+      this.hasMask = !!this.maskInputName;
+      this.imageLayout = inferLayout(this.imageShape, false);
+      this.maskLayout = inferLayout(this.maskShape, true);
+      const imageSize = getShapeSize(this.imageShape, this.imageLayout);
+      this.inputHeight = imageSize.height;
+      this.inputWidth = imageSize.width;
     }
   };
 
   function setModelReady(){
     modelBadge.textContent = 'Model ready';
     modelBadge.className = 'badge good';
-    const inputSize = Model.inputWidth && Model.inputHeight ? ` (${Model.inputWidth} × ${Model.inputHeight})` : '';
-    modelStatus.textContent = 'Inputs: ' + Model.inputNames.join(', ') + inputSize + '  →  output: ' + Model.outputNames[0];
+    const inputSize = Model.inputWidth && Model.inputHeight ? ` (${Model.inputWidth} × ${Model.inputHeight})` : ' (dynamic size)';
+    modelStatus.textContent = 'Inputs: ' + Model.inputNames.join(', ') + inputSize + '  →  output: ' + Model.outputNames[0] + (Model.hasMask ? '' : ' · no mask input detected');
     engineSelect.value = 'lama';
   }
 
@@ -759,7 +802,7 @@
       modelStatus.textContent = 'Reading ' + f.name + ' (' + (f.size/1e6).toFixed(0) + ' MB)…';
       const buf = await f.arrayBuffer();
       await Model.loadFromBytes(buf);
-      await idbSet('lama', { name: f.name, bytes: buf });
+      await idbSet('onnx-model', { name: f.name, bytes: buf });
       setModelReady();
     }catch(err){
       modelBadge.textContent = 'Load failed'; modelBadge.className = 'badge bad';
@@ -768,7 +811,7 @@
   });
 
   forgetModelBtn.addEventListener('click', async () => {
-    try{ await idbDelete('lama'); }catch(e){}
+    try{ await idbDelete('onnx-model'); }catch(e){}
     Model.session = null;
     modelBadge.textContent = 'No model loaded'; modelBadge.className = 'badge';
     modelStatus.textContent = 'Cached model cleared.';
@@ -802,7 +845,7 @@
       let offset = 0;
       for (const c of chunks){ buf.set(c, offset); offset += c.length; }
       await Model.loadFromBytes(buf.buffer);
-      await idbSet('lama', { name: 'remote-model', bytes: buf.buffer });
+      await idbSet('onnx-model', { name: 'remote-model', bytes: buf.buffer });
       modelProgress.style.display = 'none';
       setModelReady();
     }catch(err){
@@ -814,7 +857,7 @@
 
   (async function tryRestoreModel(){
     try{
-      const cached = await idbGet('lama');
+      const cached = await idbGet('onnx-model');
       if (cached && cached.bytes){
         modelStatus.textContent = 'Restoring cached model (' + cached.name + ')…';
         await Model.loadFromBytes(cached.bytes);
@@ -825,38 +868,52 @@
 
   function nextMultipleOf8(n){ return Math.max(8, Math.ceil(n/8)*8); }
   function clamp255(v){ return v<0?0:v>255?255:v>>0; }
-
-  async function runLamaOnRegion(bbox){
-    const MAXP = 768;
-    let rw = bbox.w, rh = bbox.h;
-    let pw8, ph8;
-    if (Model.inputWidth && Model.inputHeight){
-      rw = Model.inputWidth;
-      rh = Model.inputHeight;
-      pw8 = Model.inputWidth;
-      ph8 = Model.inputHeight;
-    } else if (Math.max(rw,rh) > MAXP){
-      const scale = MAXP / Math.max(rw,rh);
-      rw = Math.max(8, Math.round(rw*scale));
-      rh = Math.max(8, Math.round(rh*scale));
-      pw8 = nextMultipleOf8(rw);
-      ph8 = nextMultipleOf8(rh);
-    } else {
-      pw8 = nextMultipleOf8(rw);
-      ph8 = nextMultipleOf8(rh);
+  function inferLayout(shape, mask){
+    if (!shape || shape.length !== 4) return 'nchw';
+    return Number(shape[3]) === (mask ? 1 : 3) ? 'nhwc' : 'nchw';
+  }
+  function getShapeSize(shape, layout){
+    if (!shape || shape.length !== 4) return { width:null, height:null };
+    const height = Number(shape[layout === 'nhwc' ? 1 : 2]);
+    const width = Number(shape[layout === 'nhwc' ? 2 : 3]);
+    return { width:Number.isFinite(width) && width > 0 ? width : null, height:Number.isFinite(height) && height > 0 ? height : null };
+  }
+  function tensorShape(layout, width, height, channels){
+    return layout === 'nhwc' ? [1,height,width,channels] : [1,channels,height,width];
+  }
+  function makeTensorData(imgData, maskData, width, height, layout, channels){
+    const plane = width * height;
+    const values = new Float32Array(plane * channels);
+    for (let i=0;i<plane;i++){
+      const px = i*4;
+      const pixel = channels === 1 ? [maskData && maskData[px+3] > 10 ? 1 : 0] : [imgData[px]/255, imgData[px+1]/255, imgData[px+2]/255];
+      for (let c=0;c<channels;c++) values[layout === 'nhwc' ? i*channels+c : c*plane+i] = pixel[c] ?? pixel[pixel.length-1];
     }
+    return values;
+  }
+  function outputLayout(shape){ return shape && Number(shape[3]) === 3 ? 'nhwc' : 'nchw'; }
+
+  async function runOnnxOnRegion(bbox){
+    const MAXP = 768;
+    const fixedSize = Model.inputWidth && Model.inputHeight;
+    const scale = fixedSize ? Math.min(Model.inputWidth / bbox.w, Model.inputHeight / bbox.h) : Math.min(1, MAXP / Math.max(bbox.w,bbox.h));
+    const rw = Math.max(8, Math.round(bbox.w * scale));
+    const rh = Math.max(8, Math.round(bbox.h * scale));
+    const pw8 = fixedSize ? Model.inputWidth : nextMultipleOf8(rw);
+    const ph8 = fixedSize ? Model.inputHeight : nextMultipleOf8(rh);
+    const offsetX = Math.floor((pw8-rw)/2), offsetY = Math.floor((ph8-rh)/2);
 
     const patchCanvas = document.createElement('canvas');
     patchCanvas.width = pw8; patchCanvas.height = ph8;
     const pctx = patchCanvas.getContext('2d');
-    pctx.drawImage(canvas, bbox.x, bbox.y, bbox.w, bbox.h, 0, 0, rw, rh);
+    pctx.drawImage(canvas, bbox.x, bbox.y, bbox.w, bbox.h, offsetX, offsetY, rw, rh);
     if (pw8>rw) pctx.drawImage(patchCanvas, rw-1,0,1,rh, rw,0,pw8-rw,rh);
     if (ph8>rh) pctx.drawImage(patchCanvas, 0,rh-1,pw8,1, 0,rh,pw8,ph8-rh);
 
     const maskPatchCanvas = document.createElement('canvas');
     maskPatchCanvas.width = pw8; maskPatchCanvas.height = ph8;
     const mctx = maskPatchCanvas.getContext('2d');
-    mctx.drawImage(maskCanvas, bbox.x, bbox.y, bbox.w, bbox.h, 0, 0, rw, rh);
+    mctx.drawImage(maskCanvas, bbox.x, bbox.y, bbox.w, bbox.h, offsetX, offsetY, rw, rh);
     if (pw8>rw) mctx.drawImage(maskPatchCanvas, rw-1,0,1,rh, rw,0,pw8-rw,rh);
     if (ph8>rh) mctx.drawImage(maskPatchCanvas, 0,rh-1,pw8,1, 0,rh,pw8,ph8-rh);
 
@@ -867,65 +924,63 @@
     const origTmp = document.createElement('canvas');
     origTmp.width = canvas.width; origTmp.height = canvas.height;
     origTmp.getContext('2d').putImageData(originalImageData, 0, 0);
-    scctx.drawImage(origTmp, bbox.x, bbox.y, bbox.w, bbox.h, 0, 0, rw, rh);
+    scctx.drawImage(origTmp, bbox.x, bbox.y, bbox.w, bbox.h, offsetX, offsetY, rw, rh);
     if (pw8>rw) scctx.drawImage(srcClean, rw-1,0,1,rh, rw,0,pw8-rw,rh);
     if (ph8>rh) scctx.drawImage(srcClean, 0,rh-1,pw8,1, 0,rh,pw8,ph8-rh);
 
     const imgData = scctx.getImageData(0,0,pw8,ph8).data;
     const maskData = mctx.getImageData(0,0,pw8,ph8).data;
     const plane = pw8*ph8;
-    const imgTensorData = new Float32Array(3*plane);
-    const maskTensorData = new Float32Array(plane);
-    for (let i=0;i<plane;i++){
-      const px = i*4;
-      imgTensorData[i] = imgData[px]/255;
-      imgTensorData[plane+i] = imgData[px+1]/255;
-      imgTensorData[plane*2+i] = imgData[px+2]/255;
-      maskTensorData[i] = maskData[px+3] > 10 ? 1 : 0;
-    }
-    const imageTensor = new ort.Tensor('float32', imgTensorData, [1,3,ph8,pw8]);
-    const maskTensor = new ort.Tensor('float32', maskTensorData, [1,1,ph8,pw8]);
+    const imageTensor = new ort.Tensor('float32', makeTensorData(imgData, null, pw8, ph8, Model.imageLayout, 3), tensorShape(Model.imageLayout, pw8, ph8, 3));
     const feeds = {};
     feeds[Model.imageInputName] = imageTensor;
-    feeds[Model.maskInputName] = maskTensor;
+    if (Model.hasMask) feeds[Model.maskInputName] = new ort.Tensor('float32', makeTensorData(imgData, maskData, pw8, ph8, Model.maskLayout, 1), tensorShape(Model.maskLayout, pw8, ph8, 1));
 
     const results = await Model.session.run(feeds);
     const outTensor = results[Model.outputNames[0]];
     const outData = outTensor.data;
-    let maxSample = 0;
-    for (let i=0;i<Math.min(2000, outData.length); i++){ if (outData[i] > maxSample) maxSample = outData[i]; }
-    const scaleOut = maxSample > 1.5 ? 1 : 255;
+    const outShape = outTensor.dims || Model.outputShape;
+    const outLayout = outputLayout(outShape);
+    const outSize = getShapeSize(outShape, outLayout);
+    const outWidth = outSize.width || pw8, outHeight = outSize.height || ph8;
+    const outChannels = outLayout === 'nhwc' ? Number(outShape?.[3]) || 3 : Number(outShape?.[1]) || 3;
+    let minSample = Infinity, maxSample = -Infinity;
+    for (let i=0;i<Math.min(2000, outData.length); i++){ minSample = Math.min(minSample,outData[i]); maxSample = Math.max(maxSample,outData[i]); }
+    const scaleOut = minSample < 0 ? 127.5 : maxSample > 1.5 ? 1 : 255;
+    const offsetOut = minSample < 0 ? 127.5 : 0;
 
     const outCanvas = document.createElement('canvas');
-    outCanvas.width = pw8; outCanvas.height = ph8;
+    outCanvas.width = outWidth; outCanvas.height = outHeight;
     const octx = outCanvas.getContext('2d');
-    const outImg = octx.createImageData(pw8,ph8);
-    for (let i=0;i<plane;i++){
+    const outImg = octx.createImageData(outWidth,outHeight);
+    const outPlane = outWidth*outHeight;
+    for (let i=0;i<outPlane;i++){
       const px = i*4;
-      outImg.data[px]   = clamp255(outData[i]*scaleOut);
-      outImg.data[px+1] = clamp255(outData[plane+i]*scaleOut);
-      outImg.data[px+2] = clamp255(outData[plane*2+i]*scaleOut);
+      const at = c => outData[outLayout === 'nhwc' ? i*outChannels+c : c*outPlane+i] || 0;
+      outImg.data[px]   = clamp255(at(0)*scaleOut+offsetOut);
+      outImg.data[px+1] = clamp255(at(Math.min(1,outChannels-1))*scaleOut+offsetOut);
+      outImg.data[px+2] = clamp255(at(Math.min(2,outChannels-1))*scaleOut+offsetOut);
       outImg.data[px+3] = 255;
     }
     octx.putImageData(outImg,0,0);
 
     const resultCanvas = document.createElement('canvas');
     resultCanvas.width = bbox.w; resultCanvas.height = bbox.h;
-    resultCanvas.getContext('2d').drawImage(outCanvas, 0,0,rw,rh, 0,0, bbox.w, bbox.h);
+    resultCanvas.getContext('2d').drawImage(outCanvas, offsetX,offsetY,rw,rh, 0,0, bbox.w, bbox.h);
     return resultCanvas;
   }
 
   async function aiFill(){
-    if (!Model.session){ setStatus('Load a LaMa model on the "AI model" tab first.'); return null; }
+    if (!Model.session){ setStatus('Load an ONNX inpainting model on the "AI model" tab first.'); return null; }
     const pad = parseInt(maskPadInput.value,10);
     const bbox = maskBoundingBox(pad);
     if (!bbox) return null;
-    setStatus('Running LaMa on the masked region…');
+    setStatus('Running the ONNX model on the masked region…');
     let patchResult;
     try{
-      patchResult = await runLamaOnRegion(bbox);
+      patchResult = await runOnnxOnRegion(bbox);
     }catch(err){
-      setStatus('AI fill failed: ' + err.message + ' — the model\'s expected input shape may differ from what was sent. Check the "AI model" tab for detected input/output names.');
+      setStatus('AI fill failed: ' + err.message + ' — check the "AI model" tab for detected input/output names and shapes.');
       return null;
     }
 
@@ -1010,6 +1065,38 @@
     previewClose.focus();
   }
   downloadBtn.addEventListener('click', openPreview);
+  metadataDownloadBtn.addEventListener('click', () => downloadBtn.click());
+
+  resizeWidth.addEventListener('input', () => {
+    if (!resizeKeepRatio.checked || !originalImageData) return;
+    resizeHeight.value = Math.max(1, Math.round(Number(resizeWidth.value) * canvas.height / canvas.width));
+  });
+  resizeHeight.addEventListener('input', () => {
+    if (!resizeKeepRatio.checked || !originalImageData) return;
+    resizeWidth.value = Math.max(1, Math.round(Number(resizeHeight.value) * canvas.width / canvas.height));
+  });
+  resizeReset.addEventListener('click', updateResizeFields);
+  resizeApply.addEventListener('click', () => {
+    if (!originalImageData) return;
+    const width = Math.min(2200, Math.max(1, parseInt(resizeWidth.value, 10)));
+    const height = Math.min(2200, Math.max(1, parseInt(resizeHeight.value, 10)));
+    if (!width || !height) return;
+    if (width === canvas.width && height === canvas.height) return;
+    pushActionSnapshot();
+    const source = document.createElement('canvas');
+    source.width = canvas.width; source.height = canvas.height;
+    source.getContext('2d').putImageData(originalImageData, 0, 0);
+    canvas.width = width; canvas.height = height;
+    ctx.drawImage(source, 0, 0, width, height);
+    originalImageData = ctx.getImageData(0, 0, width, height);
+    maskCanvas.width = width; maskCanvas.height = height;
+    maskCtx.clearRect(0, 0, width, height);
+    maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
+    compareSnapshot = null; compareBtn.disabled = true;
+    updateResizeFields();
+    applyZoom();
+    setStatus('Image resized to ' + width + ' × ' + height + ' pixels.');
+  });
   async function readOriginalExifSegment(){
     if (!sourceFile || !(/jpe?g/i.test(sourceFile.type) || /\.jpe?g$/i.test(sourceFile.name || ''))) return null;
     const bytes = new Uint8Array(await sourceFile.arrayBuffer());
@@ -1038,6 +1125,7 @@
   previewClose.addEventListener('click', closePreview);
   previewCancel.addEventListener('click', closePreview);
   previewModal.addEventListener('click', e => { if (e.target === previewModal) closePreview(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !previewModal.hidden) closePreview(); });
   previewDownload.addEventListener('click', async () => {
     const fmt = downloadFormat.value;
     const ext = fmt === 'jpeg' ? 'jpg' : 'png';

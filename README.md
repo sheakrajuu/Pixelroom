@@ -6,7 +6,7 @@ Pixelroom is a browser-based image editor for removing unwanted objects and deta
 
 - Drag-and-drop or file-picker image upload
 - Local object and watermark removal with a non-AI quick-fill method
-- Optional LaMa AI inpainting through ONNX Runtime Web
+- Optional ONNX inpainting through ONNX Runtime Web
 - Brush selection and eraser tools
 - Crop and rotate
 - Zoom controls
@@ -16,19 +16,22 @@ Pixelroom is a browser-based image editor for removing unwanted objects and deta
 - PNG and JPEG export
 - Optional metadata removal
 - Export preview before downloading
+- Separate object removal, metadata cleanup, and image resize sections
+- Pixel-dimension resize with optional aspect-ratio locking
 - Responsive desktop and mobile layout
 
 ## How It Works
 
-1. Open Pixelroom and select an image.
-2. Use the Brush tool to mark the object or area to remove. The red overlay is only a temporary selection.
-3. Choose a removal method:
+1. Open Pixelroom and select or drop an image.
+2. Choose **Remove object or watermark**, **Remove image metadata**, or **Resize image**.
+3. In the removal section, use the Brush tool to mark the object or area to remove. The red overlay is only a temporary selection.
+4. Choose a removal method:
    - **Quick fill** works locally and is best for simple or repeating backgrounds.
-   - **AI fill** can produce better results on complex objects, logos, and detailed backgrounds after a LaMa model is loaded.
-4. Select **Remove selection**.
-5. Review the result with **Hold to compare** or **Undo last action**.
-6. Select a format, choose whether to remove metadata, and click **Download**.
-7. Review the export preview, then select **Download image**.
+   - **AI fill** can produce better results on complex objects, logos, and detailed backgrounds after a compatible ONNX inpainting model is loaded.
+5. Select **Remove selection**.
+6. Review the result with **Hold to compare** or **Undo last action**.
+7. Select a format and click **Download**. The metadata section provides a dedicated clean-export action.
+8. Review the export preview, then select **Download image**.
 
 Only edit images that you own or have permission to modify.
 
@@ -75,11 +78,11 @@ The app loads ONNX Runtime Web from jsDelivr and the upload panel uses a remote 
 AI fill is optional. To use it:
 
 1. Open the **AI model** tab.
-2. Choose a compatible LaMa `.onnx` model file, or provide a direct model URL.
+2. Choose a compatible `.onnx` image-inpainting model file, or provide a direct model URL.
 3. Wait for the model to load.
 4. Select **AI fill** from the removal method menu.
 
-Large model downloads can take time and may be blocked by cross-origin restrictions. Loading a local model file is the most reliable option.
+The browser adapter detects common NCHW and NHWC RGB layouts, fixed or dynamic spatial sizes, and an optional single-channel mask input. It preserves the selected region's aspect ratio and composites the result back at the original pixel dimensions. Models with different preprocessing, multiple extra inputs, or non-RGB outputs still need a model-specific adapter. Large downloads can take time and may be blocked by cross-origin restrictions; loading a local model file is the most reliable option.
 
 ## Project Structure
 

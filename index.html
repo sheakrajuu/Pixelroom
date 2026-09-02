@@ -41,10 +41,30 @@
     <span>Drag it here or click to browse</span>
     <input type="file" id="fileInput" accept="image/*">
   </div>
+  <div class="section-choices" id="sectionChoices" aria-label="Choose an image task">
+    <button class="section-choice active" data-section="remove" disabled>
+      <span class="choice-mark" aria-hidden="true">01</span><strong>Remove object or watermark</strong><span>Paint over it and fill the selection</span>
+    </button>
+    <button class="section-choice" data-section="metadata" disabled>
+      <span class="choice-mark" aria-hidden="true">02</span><strong>Remove image metadata</strong><span>Clean camera, date, and location details</span>
+    </button>
+    <button class="section-choice" data-section="resize" disabled>
+      <span class="choice-mark" aria-hidden="true">03</span><strong>Resize image</strong><span>Set a new pixel width and height</span>
+    </button>
+  </div>
 
   <div class="stage" id="stage">
+    <div class="section-back-wrap">
+      <button class="secondary small" id="sectionBack" hidden>× Close editor</button>
+    </div>
 
-    <div class="toolbar" id="toolbar">
+    <div class="section-home" id="sectionHome">
+      <p class="eyebrow">IMAGE READY</p>
+      <h2>What would you like to do?</h2>
+      <p class="hint">Choose one task below. Your image stays in this browser while you work.</p>
+    </div>
+
+    <div class="toolbar section-remove" id="toolbar">
       <button class="tool-btn active" id="toolBrush" data-tool="brush" title="Brush">
         <svg viewBox="0 0 24 24"><circle cx="8" cy="16" r="3.4"></circle><line x1="10.4" y1="13.6" x2="18" y2="6"></line><path d="M18 6 c1.4-1.4 3-1.4 3.6 0 c0.6 1.6-1 3-1 3l-2.6 2.6"></path></svg>
         <span class="label">Brush</span>
@@ -91,7 +111,7 @@
       <button class="secondary" id="cropCancel">Cancel</button>
     </div>
 
-    <div class="controls" id="brushControls">
+    <div class="controls section-remove" id="brushControls">
       <div class="brush-control">Brush <input type="range" id="brushSize" min="4" max="90" value="26"></div>
       <div class="brush-control">Padding <input type="range" id="maskPad" min="0" max="60" value="18"></div>
       <button class="secondary small" id="undoBtn" disabled>Undo stroke</button>
@@ -100,7 +120,7 @@
       <button class="secondary small" id="clearBtn">New image</button>
     </div>
 
-    <div class="row">
+    <div class="row section-remove">
       <div class="status" id="status">Paint over the area to remove.</div>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <select id="engineSelect" aria-label="Removal method">
@@ -112,32 +132,30 @@
           <option value="png">PNG</option>
           <option value="jpeg">JPEG</option>
         </select>
-        <label class="metadata-toggle" title="Remove camera and location metadata from the export"><input type="checkbox" id="stripMetadata"> Remove metadata</label>
         <button class="secondary" id="downloadBtn" disabled>Download</button>
       </div>
     </div>
 
-    <div class="panel-tabs">
+    <div class="panel-tabs section-remove">
       <button class="panel-tab active" data-panel="fillPanel">Fill settings</button>
       <button class="panel-tab" data-panel="modelPanel">AI model</button>
-      <button class="panel-tab" data-panel="metaPanel">Photo info</button>
     </div>
 
-    <div class="panel active" id="fillPanel">
+    <div class="panel active section-remove" id="fillPanel">
       <div class="field-row">
         <div class="brush-control">Edge feather <input type="range" id="featherRange" min="0" max="30" value="10"><span id="featherVal">10px</span></div>
       </div>
       <p class="hint">Padding adds context around the selection. Feather softens AI edges.</p>
     </div>
 
-    <div class="panel" id="modelPanel">
+    <div class="panel section-remove" id="modelPanel">
       <div class="field-row">
         <span id="modelBadge" class="badge">No model loaded</span>
       </div>
-      <p class="hint">Load a LaMa model for detailed fills. It stays cached in this browser.</p>
+      <p class="hint">Load any compatible image inpainting ONNX model. It stays cached in this browser.</p>
       <div class="field-row">
         <button class="small" id="chooseModelBtn">Choose .onnx file</button>
-        <input type="file" id="modelFileInput" accept=".onnx">
+        <input type="file" id="modelFileInput" accept=".onnx,application/octet-stream">
         <button class="secondary small" id="forgetModelBtn">Forget cached model</button>
       </div>
       <div class="url-row">
@@ -146,12 +164,30 @@
       </div>
       <progress id="modelProgress" value="0" max="100" style="display:none;"></progress>
       <div class="status" id="modelStatus" style="margin-top:8px;"></div>
-      <p class="hint">Large models may be easier to load from a downloaded file.</p>
+      <p class="hint">The adapter supports common NCHW or NHWC RGB models, with an optional single-channel mask input.</p>
     </div>
 
-    <div class="panel" id="metaPanel">
-      <div id="metaContent"><p class="hint">Load a photo to see its embedded metadata here.</p></div>
-      <p class="hint">Enable Remove metadata before exporting if you want a clean file without embedded metadata.</p>
+    <div class="section-tools section-metadata" id="metadataSection">
+      <p class="eyebrow">METADATA CLEANUP</p>
+      <h2>Export a clean copy</h2>
+      <p class="hint">The canvas export removes embedded camera, date, and location metadata.</p>
+      <label class="metadata-toggle"><input type="checkbox" id="stripMetadata" checked> Remove metadata from export</label>
+      <div class="section-actions"><button id="metadataDownloadBtn">Download clean image</button></div>
+      <div class="metadata-info">
+        <p class="eyebrow">PHOTO INFO</p>
+        <div id="metaContent"><p class="hint">Load a photo to see its embedded metadata here.</p></div>
+      </div>
+    </div>
+
+    <div class="section-tools section-resize" id="resizeSection">
+      <p class="eyebrow">IMAGE RESIZE</p>
+      <h2>Choose the output dimensions</h2>
+      <div class="resize-grid">
+        <label>Width <input type="number" id="resizeWidth" min="1" max="2200" step="1"></label>
+        <label>Height <input type="number" id="resizeHeight" min="1" max="2200" step="1"></label>
+        <label class="resize-lock"><input type="checkbox" id="resizeKeepRatio" checked> Keep aspect ratio</label>
+      </div>
+      <div class="section-actions"><button id="resizeApply">Apply resize</button><button class="secondary" id="resizeReset">Reset fields</button></div>
     </div>
 
   </div>
@@ -173,7 +209,7 @@
   <article id="tools">
     <p class="eyebrow">TOOLS</p>
     <h2>What you can do</h2>
-    <p>Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill works immediately; AI fill is available when you load a LaMa model.</p>
+    <p>Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill works immediately; AI fill is available when you load a compatible ONNX model.</p>
   </article>
   <article id="how-it-works">
     <p class="eyebrow">HOW IT WORKS</p>
