@@ -113,6 +113,9 @@ async function instagramPublicFallback(sourceUrl, itemCount = 1){
     };
     const video = meta('og:video') || meta('og:video:secure_url');
     const image = meta('og:image');
+    const embeddedVideos = pages.flatMap(page => [...page.matchAll(/"(?:video_url|videoUrl|video_src|videoSource)"\s*:\s*"([^"]+)"/gi)]).map(match => decodeHtml(match[1]).replace(/\\u0026/g, '&').replace(/\\\//g, '/'))
+      .filter(url => /^https:\/\//i.test(url));
+    const videoUrls = [...new Set([video, ...embeddedVideos].filter(Boolean))];
     const embeddedImages = pages.flatMap(page => [...page.matchAll(/https:\/\/[^"'\\\s<>]+/g)].map(match => decodeHtml(match[0])))
       .filter(url => /scontent[^/]*\/.*\.(?:jpg|jpeg|png|webp)(?:\?|$)/i.test(url));
     const mediaKey = image.match(/_(\d{10,})_/)?.[1];
@@ -120,11 +123,11 @@ async function instagramPublicFallback(sourceUrl, itemCount = 1){
     const imageUrls = [...new Map([image, ...postImages].filter(Boolean).map(url => {
       try { return [new URL(url).pathname, url]; } catch(e) { return [url, url]; }
     })).values()];
-    const mediaUrl = video || imageUrls[0];
+    const mediaUrl = videoUrls[0] || imageUrls[0];
     if (!mediaUrl) throw Object.assign(new Error('Instagram media unavailable'), { code:'unavailable' });
-    if (video) {
-      const format = makeFormat({ kind:'direct', sourceUrl:video, filename:'instagram-media' }, 'Best available', 'MP4', video, { filename:'instagram-media.mp4' });
-      return { title:meta('og:title') || 'Instagram media', source:'Instagram', thumbnail:image || null, duration:'Not available', mediaType:'Video', formats:[format], items:[{ title:meta('og:title') || 'Instagram video', source:'Instagram', thumbnail:image || null, formats:[format] }] };
+    if (videoUrls.length) {
+      const formats = videoUrls.map((url, index) => makeFormat({ kind:'direct', sourceUrl:url, filename:`instagram-video-${index + 1}` }, 'Best available', 'MP4', url, { filename:`instagram-video-${index + 1}.mp4` }));
+      return { title:meta('og:title') || 'Instagram media', source:'Instagram', thumbnail:image || null, duration:'Not available', mediaType:'Video', formats, items:formats.map((format, index) => ({ title:meta('og:title') || `Instagram video ${index + 1}`, source:'Instagram', thumbnail:image || null, formats:[format] })) };
     }
     const formats = imageUrls.map((url, index) => makeFormat({ kind:'direct', sourceUrl:url, filename:`instagram-image-${index + 1}` }, `Image ${index + 1}`, 'Image', url, { filename:`instagram-image-${index + 1}.jpg` }));
     return { title:meta('og:title') || 'Instagram media', source:'Instagram', thumbnail:imageUrls[0] || null, duration:'Not available', mediaType:'Image', formats, items:formats.map((format, index) => ({ title:`Instagram image ${index + 1}`, source:'Instagram', thumbnail:imageUrls[index], formats:[format] })) };
