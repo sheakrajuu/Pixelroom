@@ -240,7 +240,7 @@
     document.body.classList.toggle('app-editing', name !== 'home');
     if (name !== 'home') window.scrollTo({ top:0, behavior:'instant' });
     sectionChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.section === name));
-    sectionChoices.forEach(choice => { choice.parentElement.hidden = name !== 'home'; });
+    sectionChoices.forEach(choice => { choice.parentElement.hidden = !originalImageData; });
     sectionHome.hidden = name !== 'home';
     sectionBack.hidden = name === 'home';
     sectionEditor.forEach(element => { element.hidden = name !== 'remove' && name !== 'ai'; });
