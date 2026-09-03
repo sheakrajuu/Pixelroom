@@ -1368,6 +1368,8 @@
       return;
     }
     const generation = imageGeneration;
+    const selectionPadding = parseInt(maskPadInput.value, 10);
+    const editBbox = maskBoundingBox(selectionPadding);
     const operation = { id: ++aiOperationId, generation, cancelled: false };
     aiOperation = operation;
     aiRunBtn.disabled = true; aiDownloadBtn.disabled = true;
@@ -1386,7 +1388,20 @@
       const nativeResult = document.createElement('canvas');
       nativeResult.width = sourceImage.width;
       nativeResult.height = sourceImage.height;
-      nativeResult.getContext('2d').drawImage(result, 0, 0, result.width, result.height, 0, 0, nativeResult.width, nativeResult.height);
+      const nativeContext = nativeResult.getContext('2d');
+      nativeContext.imageSmoothingEnabled = true;
+      nativeContext.imageSmoothingQuality = 'high';
+      nativeContext.drawImage(sourceImage, 0, 0);
+      const sameComposition = editBbox && sourceDimensions &&
+        Math.abs((sourceDimensions.width / sourceDimensions.height) - (canvas.width / canvas.height)) < 0.001;
+      if (sameComposition){
+        const scaleX = sourceImage.width / canvas.width;
+        const scaleY = sourceImage.height / canvas.height;
+        nativeContext.drawImage(result, editBbox.x, editBbox.y, editBbox.w, editBbox.h,
+          editBbox.x * scaleX, editBbox.y * scaleY, editBbox.w * scaleX, editBbox.h * scaleY);
+      } else {
+        nativeContext.drawImage(result, 0, 0, result.width, result.height, 0, 0, nativeResult.width, nativeResult.height);
+      }
       canvas.width = nativeResult.width;
       canvas.height = nativeResult.height;
       ctx.drawImage(nativeResult, 0, 0);
