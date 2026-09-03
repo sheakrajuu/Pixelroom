@@ -203,7 +203,12 @@ function normalizeProviderResult(data, sourceUrl){
     data.picker.forEach((item, index) => {
       if (item.thumb && !thumbnail) thumbnail = item.thumb;
       if (item.url) {
-        const format = makeFormat(job, item.type === 'audio' ? 'Audio' : `Media ${index + 1}`, item.type || 'Media', item.url);
+        const providerType = String(item.type || '').toLowerCase();
+        const isImage = ['image', 'photo', 'picture'].includes(providerType) || /\.(?:jpg|jpeg|png|webp|gif)(?:\?|$)/i.test(item.url);
+        const isAudio = providerType === 'audio';
+        const type = isImage ? 'Image' : isAudio ? 'Audio' : 'Video';
+        const label = isImage ? `Image ${index + 1}` : isAudio ? 'Audio' : `Video ${index + 1}`;
+        const format = makeFormat(job, label, type, item.url, { filename:`media-${index + 1}.${isImage ? 'jpg' : isAudio ? 'mp3' : 'mp4'}` });
         formats.push(format);
         items.push({ title:data.title || `Media ${index + 1}`, source:data.service || 'Supported source', thumbnail:item.thumb || null, formats:[format] });
       }
@@ -247,8 +252,9 @@ async function apifyInstagramAnalyze(sourceUrl){
 async function handleAnalyze(req, res){
   const body = await parseBody(req);
   const sourceUrl = validateSourceUrl(body.url);
-  if (APIFY_TOKEN && new URL(sourceUrl).hostname.endsWith('instagram.com')) return json(res, 200, await apifyInstagramAnalyze(sourceUrl));
-  if (PROVIDER_URL) return json(res, 200, normalizeProviderResult(await providerRequest(sourceUrl), sourceUrl));
+  const isInstagram = new URL(sourceUrl).hostname.endsWith('instagram.com');
+  if (APIFY_TOKEN && isInstagram) return json(res, 200, await apifyInstagramAnalyze(sourceUrl));
+  if (PROVIDER_URL && !isInstagram) return json(res, 200, normalizeProviderResult(await providerRequest(sourceUrl), sourceUrl));
   json(res, 200, await localAnalyze(sourceUrl));
 }
 function safeFilename(value){
