@@ -1058,7 +1058,7 @@
     session: null, inputNames: [], outputNames: [], imageInputName: null, maskInputName: null,
     imageShape: null, maskShape: null, outputShape: null, inputWidth: null, inputHeight: null,
     imageLayout: 'nchw', maskLayout: 'nchw', hasMask: false,
-    async loadFromBytes(bytes){
+    async loadFromBytes(bytes, modelName=''){
       if (!window.ort) throw new Error('ONNX Runtime failed to load from the CDN — check your network connection.');
       modelStatus.textContent = 'Initializing runtime…';
       ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 4);
@@ -1079,6 +1079,17 @@
       const imageSize = getShapeSize(this.imageShape, this.imageLayout);
       this.inputHeight = imageSize.height;
       this.inputWidth = imageSize.width;
+      // The published LaMa ONNX exports are fixed at 512x512 even when symbolic dimensions are exposed.
+      if ((!this.inputWidth || !this.inputHeight) && /lama(?:_fp32)?\.onnx/i.test(modelName)){
+        this.inputWidth = 512;
+        this.inputHeight = 512;
+      }
+      if (!this.imageInputName || !this.imageShape || this.imageShape.length !== 4){
+        throw new Error('This model does not expose a supported 4D image input.');
+      }
+      if (!this.outputNames.length){
+        throw new Error('This model does not expose an image output.');
+      }
     }
   };
 
@@ -1098,7 +1109,7 @@
       modelBadge.textContent = 'Loading…'; modelBadge.className = 'badge';
       modelStatus.textContent = 'Reading ' + f.name + ' (' + (f.size/1e6).toFixed(0) + ' MB)…';
       const buf = await f.arrayBuffer();
-      await Model.loadFromBytes(buf);
+      await Model.loadFromBytes(buf, f.name);
       await idbSet('onnx-model', { name: f.name, bytes: buf });
       setModelReady();
     }catch(err){
@@ -1141,7 +1152,7 @@
       const buf = new Uint8Array(received);
       let offset = 0;
       for (const c of chunks){ buf.set(c, offset); offset += c.length; }
-      await Model.loadFromBytes(buf.buffer);
+      await Model.loadFromBytes(buf.buffer, url.split('/').pop().split('?')[0]);
       await idbSet('onnx-model', { name: 'remote-model', bytes: buf.buffer });
       modelProgress.style.display = 'none';
       setModelReady();
@@ -1157,7 +1168,7 @@
       const cached = await idbGet('onnx-model');
       if (cached && cached.bytes){
         modelStatus.textContent = 'Restoring cached model (' + cached.name + ')…';
-        await Model.loadFromBytes(cached.bytes);
+        await Model.loadFromBytes(cached.bytes, cached.name === 'remote-model' ? 'lama_fp32.onnx' : (cached.name || ''));
         setModelReady();
       }
     }catch(e){ /* no cached model yet */ }
@@ -1458,7 +1469,8 @@
       const message = 'AI processing failed: ' + err.message + ' — check the AI Editor model settings.';
       if (activeSection === 'ai') setAiStatus(message);
       else setStatus(message);
-      return null;
+      modelStatus.textContent = 'Model could not process this selection: ' + (err.message || 'unknown model error');
+      throw err;
     }
 
     const feather = parseInt(featherRange.value,10);
