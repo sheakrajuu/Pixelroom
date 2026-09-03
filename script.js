@@ -10,6 +10,8 @@
   const savedSessionPreview = document.getElementById('savedSessionPreview');
   const savedSessionName = document.getElementById('savedSessionName');
   const resumeBtn = document.getElementById('resumeBtn');
+  const uploadTitle = document.getElementById('uploadTitle');
+  const uploadHint = document.getElementById('uploadHint');
   const stage = document.getElementById('stage');
   const canvasScroll = document.getElementById('canvasScroll');
   const canvasWrap = document.getElementById('canvasWrap');
@@ -38,7 +40,6 @@
   const previewCancel = document.getElementById('previewCancel');
   const previewDownload = document.getElementById('previewDownload');
   const previewNote = document.querySelector('.preview-note');
-  const engineSelect = document.getElementById('engineSelect');
   const statusEl = document.getElementById('status');
 
   const zoomInBtn = document.getElementById('zoomIn');
@@ -54,9 +55,9 @@
   const cropCancel = document.getElementById('cropCancel');
 
   const panelTabs = document.querySelectorAll('.panel-tab');
-  const panels = { fillPanel: document.getElementById('fillPanel'), modelPanel: document.getElementById('modelPanel') };
+  const panels = { fillPanel: document.getElementById('fillPanel') };
 
-  const modelBadge = document.getElementById('modelBadge');
+  const modelBadge = document.getElementById('aiModelBadge');
   const chooseModelBtn = document.getElementById('chooseModelBtn');
   const modelFileInput = document.getElementById('modelFileInput');
   const forgetModelBtn = document.getElementById('forgetModelBtn');
@@ -66,8 +67,10 @@
   const modelStatus = document.getElementById('modelStatus');
   const metaContent = document.getElementById('metaContent');
   const sectionChoices = document.querySelectorAll('.section-choice');
+  const sectionEditor = document.querySelectorAll('.section-editor');
   const sectionRemove = document.querySelectorAll('.section-remove');
   const sectionHome = document.getElementById('sectionHome');
+  const changeImageBtn = document.getElementById('changeImageBtn');
   const sectionBack = document.getElementById('sectionBack');
   const metadataSection = document.getElementById('metadataSection');
   const resizeSection = document.getElementById('resizeSection');
@@ -77,6 +80,24 @@
   const resizeKeepRatio = document.getElementById('resizeKeepRatio');
   const resizeApply = document.getElementById('resizeApply');
   const resizeReset = document.getElementById('resizeReset');
+  const aiEditorSection = document.getElementById('aiEditorSection');
+  const aiModelBadge = document.getElementById('aiModelBadge');
+  const aiModelRequirements = document.getElementById('aiModelRequirements');
+  const aiCancelBtn = document.getElementById('aiCancelBtn');
+  const aiRetryBtn = document.getElementById('aiRetryBtn');
+  const aiDismissBtn = document.getElementById('aiDismissBtn');
+  const aiDownloadBtn = document.getElementById('aiDownloadBtn');
+  const aiStatus = document.getElementById('aiStatus');
+  const aiPreviewFrame = document.getElementById('aiPreviewFrame');
+  const aiPreviewCanvas = document.getElementById('aiPreviewCanvas');
+  const downloadResolution = document.getElementById('downloadResolution');
+  const exportCustomSize = document.getElementById('exportCustomSize');
+  const exportWidth = document.getElementById('exportWidth');
+  const exportHeight = document.getElementById('exportHeight');
+  const exportQuality = document.getElementById('exportQuality');
+  const exportQualityValue = document.getElementById('exportQualityValue');
+  const exportQualityWrap = document.getElementById('exportQualityWrap');
+  const exportQualityHint = document.getElementById('exportQualityHint');
 
   // ============================================================
   // App state
@@ -99,6 +120,14 @@
   let sourceFile = null;
   let savedSessionUrl = null;
   let savedSessionFile = null;
+  let imageGeneration = 0;
+  let loadRequestId = 0;
+  let aiResult = null;
+  let sourceDimensions = null;
+  let aiOperation = null;
+  let aiOperationId = 0;
+  let exportNumber = 0;
+  try{ exportNumber = Number(localStorage.getItem('pixelroomedit-download-number')) || 0; }catch(e){}
 
   const SESSION_DB = 'pixelroom-session';
   const SESSION_STORE = 'image';
@@ -145,15 +174,56 @@
         writeSession({
           blob,
           name: sourceFile?.name || 'image.png',
-          type: sourceFile?.type || blob.type || 'image/png',
+          type: blob.type || 'image/png',
           lastModified: sourceFile?.lastModified || Date.now(),
-          section: activeSection
+          section: activeSection,
+          sourceWidth: sourceDimensions?.width || canvas.width,
+          sourceHeight: sourceDimensions?.height || canvas.height
         }).catch(() => {});
       }, 'image/png');
     }, 120);
   }
 
   function setStatus(msg){ statusEl.textContent = msg; }
+  function nextExportFilename(extension){
+    exportNumber++;
+    try{ localStorage.setItem('pixelroomedit-download-number', String(exportNumber)); }catch(e){}
+    return 'Pixelroomedit-' + exportNumber + '.' + extension;
+  }
+  function setAiStatus(msg){ aiStatus.textContent = msg; }
+  function clearAiResult(){
+    aiResult = null;
+    aiPreviewFrame.hidden = true;
+    aiPreviewCanvas.width = 1;
+    aiPreviewCanvas.height = 1;
+    aiDownloadBtn.disabled = true;
+  }
+  function updateAiModelInfo(){
+    const ready = !!Model.session;
+    aiModelBadge.textContent = ready ? 'Model ready' : 'No model loaded';
+    aiModelBadge.className = ready ? 'badge good' : 'badge';
+    aiModelRequirements.textContent = ready
+      ? (Model.inputWidth && Model.inputHeight
+        ? `Required input: ${Model.inputWidth} × ${Model.inputHeight}px (${Model.imageLayout.toUpperCase()})`
+        : 'Required input: dynamic dimensions, rounded to the model stride')
+      : 'Choose a compatible model below.';
+    aiRunBtn.disabled = !sourceFile;
+  }
+  function updateAiActionState(){
+    aiRunBtn.disabled = !sourceFile;
+  }
+  function isAiOperationCurrent(operation){
+    return aiOperation === operation && !operation.cancelled && operation.generation === imageGeneration;
+  }
+  function resetAiOperationButtons(){
+    aiCancelBtn.hidden = true;
+    aiRetryBtn.hidden = true;
+    aiDismissBtn.hidden = true;
+    updateAiActionState();
+  }
+  function removeAiSnapshot(operation){
+    if (actionHistory[actionHistory.length - 1] === operation.snapshot) actionHistory.pop();
+  }
 
   function updateResizeFields(){
     if (!originalImageData) return;
@@ -166,14 +236,16 @@
     panning = false;
     stage.dataset.section = name;
     document.body.dataset.section = name;
-    canvas.style.pointerEvents = name === 'remove' ? 'auto' : 'none';
+    canvas.style.pointerEvents = name === 'remove' || name === 'ai' ? 'auto' : 'none';
     document.body.classList.toggle('app-editing', name !== 'home');
     if (name !== 'home') window.scrollTo({ top:0, behavior:'instant' });
     sectionChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.section === name));
     sectionChoices.forEach(choice => { choice.parentElement.hidden = name !== 'home'; });
     sectionHome.hidden = name !== 'home';
     sectionBack.hidden = name === 'home';
+    sectionEditor.forEach(element => { element.hidden = name !== 'remove' && name !== 'ai'; });
     sectionRemove.forEach(element => { element.hidden = name !== 'remove'; });
+    aiEditorSection.hidden = name !== 'ai';
     metadataSection.hidden = name !== 'metadata';
     resizeSection.hidden = name !== 'resize';
     if (name === 'resize') updateResizeFields();
@@ -188,15 +260,24 @@
     if (!file) return false;
     return file.type.startsWith('image/') || /\.(avif|gif|jpe?g|png|webp|bmp|svg)$/i.test(file.name || '');
   }
-  function loadImageFile(file, restoredSection='home'){
+  function loadImageFile(file, restoredSection='home', restoredDimensions=null){
     if (!isImageFile(file)){
       setStatus('Choose an image file such as JPG, PNG, or WEBP.');
       return;
     }
+    const requestId = ++loadRequestId;
     const img = new Image();
-    sourceFile = file;
     const url = URL.createObjectURL(file);
     img.onload = function(){
+      if (requestId !== loadRequestId){ URL.revokeObjectURL(url); return; }
+      imageGeneration++;
+      sourceFile = file;
+      sourceDimensions = restoredDimensions || { width: img.width, height: img.height };
+      if (aiOperation) aiOperation.cancelled = true;
+      aiOperation = null;
+      resetAiOperationButtons();
+      clearAiResult();
+      setAiStatus('Ready when an AI model is loaded.');
       const maxDim = 2200;
       let w = img.width, h = img.height;
       if (w > maxDim || h > maxDim){
@@ -220,6 +301,12 @@
       updateZoomLabel();
       stage.classList.add('active');
       dropzone.style.display = 'none';
+      uploadTitle.textContent = 'Image loaded';
+      uploadHint.textContent = 'Choose a different tool below to continue';
+      savedSession.hidden = true;
+      savedSessionFile = null;
+      if (savedSessionUrl) URL.revokeObjectURL(savedSessionUrl);
+      savedSessionUrl = null;
       sectionChoices.forEach(choice => { choice.disabled = false; });
       markEditorHistory();
       setSection(restoredSection);
@@ -234,6 +321,7 @@
 
       readMetadata(file, w, h);
       saveSession();
+      updateAiModelInfo();
     };
     img.onerror = function(){ setStatus('Could not read that file as an image.'); URL.revokeObjectURL(url); };
     img.src = url;
@@ -244,7 +332,10 @@
     e.stopPropagation();
     if (savedSessionFile) loadImageFile(savedSessionFile, activeSection === 'home' ? 'home' : activeSection);
   });
-  fileInput.addEventListener('change', e => loadImageFile(e.target.files[0]));
+  fileInput.addEventListener('change', e => {
+    loadImageFile(e.target.files[0]);
+    fileInput.value = '';
+  });
   let dragDepth = 0;
   dropzone.addEventListener('dragenter', e => {
     e.preventDefault();
@@ -277,6 +368,9 @@
   });
 
   clearBtn.addEventListener('click', () => {
+    imageGeneration++;
+    loadRequestId++;
+    if (aiOperation) aiOperation.cancelled = true;
     stage.classList.remove('active');
     dropzone.style.display = '';
     sectionChoices.forEach(choice => { choice.disabled = true; });
@@ -284,6 +378,13 @@
     initialImageData = null;
     compareSnapshot = null;
     sourceFile = null;
+    sourceDimensions = null;
+    aiOperation = null;
+    activePointers.clear();
+    pinchDistance = 0;
+    clearAiResult();
+    uploadTitle.textContent = 'Select an image to begin';
+    uploadHint.textContent = 'Drag it here or click to browse';
     savedSessionFile = null;
     savedSession.hidden = true;
     if (savedSessionUrl) URL.revokeObjectURL(savedSessionUrl);
@@ -294,6 +395,11 @@
     setStatus('Paint over the area to remove.');
     metaContent.innerHTML = '<p class="hint">Load a photo to see its embedded metadata here.</p>';
     setSection('home');
+    updateAiModelInfo();
+  });
+  changeImageBtn.addEventListener('click', () => {
+    fileInput.value = '';
+    fileInput.click();
   });
 
   sectionBack.addEventListener('click', () => setSection('home'));
@@ -403,13 +509,18 @@
 
   function paintDot(x,y){
     const r = parseInt(brushSizeInput.value,10);
+    const gradient = maskCtx.createRadialGradient(x, y, 0, x, y, r);
+    gradient.addColorStop(0, 'rgba(255,60,60,0.58)');
+    gradient.addColorStop(0.72, 'rgba(255,60,60,0.42)');
+    gradient.addColorStop(1, 'rgba(255,60,60,0)');
     if (tool === 'eraser'){
       maskCtx.save();
       maskCtx.globalCompositeOperation = 'destination-out';
+      maskCtx.fillStyle = gradient;
       maskCtx.beginPath(); maskCtx.arc(x,y,r,0,Math.PI*2); maskCtx.fill();
       maskCtx.restore();
     } else {
-      maskCtx.fillStyle = 'rgba(255,60,60,0.55)';
+      maskCtx.fillStyle = gradient;
       maskCtx.beginPath(); maskCtx.arc(x,y,r,0,Math.PI*2); maskCtx.fill();
     }
   }
@@ -439,8 +550,22 @@
 
   let lastX = 0, lastY = 0;
   let lastPanX = 0, lastPanY = 0;
+  const activePointers = new Map();
+  let pinchDistance = 0;
+  let pinchZoom = 1;
+  function pointerDistance(){
+    const points = [...activePointers.values()];
+    return points.length > 1 ? Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) : 0;
+  }
   function startDraw(e){
-    if (!originalImageData || activeSection !== 'remove' || cropping) return;
+    if (!originalImageData || (activeSection !== 'remove' && activeSection !== 'ai') || cropping) return;
+    activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (activePointers.size > 1){
+      drawing = false; panning = false;
+      pinchDistance = pointerDistance(); pinchZoom = zoom;
+      e.preventDefault();
+      return;
+    }
     if (tool === 'off'){
       e.preventDefault();
       panning = true;
@@ -462,8 +587,18 @@
     undoBtn.disabled = false;
   }
   function moveDraw(e){
+    if (activePointers.has(e.pointerId)) activePointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (activePointers.size > 1){
+      const distance = pointerDistance();
+      if (pinchDistance > 0 && distance > 0){
+        zoom = Math.min(4, Math.max(0.25, +(pinchZoom * distance / pinchDistance).toFixed(2)));
+        applyZoom(); updateZoomLabel();
+      }
+      e.preventDefault();
+      return;
+    }
     if (panning){
-      if (activeSection !== 'remove') return;
+      if (activeSection !== 'remove' && activeSection !== 'ai') return;
       e.preventDefault();
       const dx = e.clientX - lastPanX;
       const dy = e.clientY - lastPanY;
@@ -473,23 +608,30 @@
       lastPanY = e.clientY;
       return;
     }
-    if (!drawing || activeSection !== 'remove') return;
+    if (!drawing || (activeSection !== 'remove' && activeSection !== 'ai')) return;
     e.preventDefault();
     const p = getPos(e);
     paintLine(lastX,lastY,p.x,p.y);
     lastX = p.x; lastY = p.y;
     redrawWithMask();
   }
-  function endDraw(){
+  function endDraw(e){
+    if (e?.pointerId !== undefined) activePointers.delete(e.pointerId);
+    if (pinchDistance > 0){
+      if (!activePointers.size) pinchDistance = 0;
+      drawing = false; panning = false;
+      return;
+    }
     if (panning){
       panning = false;
       return;
     }
     if (!drawing) return;
     drawing = false;
-    if (activeSection !== 'remove') return;
+    if (activeSection !== 'remove' && activeSection !== 'ai') return;
     hasMask = maskHasContent();
     fillBtn.disabled = !hasMask;
+    updateAiActionState();
   }
 
   canvas.addEventListener('pointerdown', startDraw);
@@ -503,6 +645,7 @@
     redrawWithMask();
     hasMask = maskHasContent();
     fillBtn.disabled = !hasMask;
+    updateAiActionState();
     if (!maskHistory.length) undoBtn.disabled = true;
   });
 
@@ -944,7 +1087,7 @@
     modelBadge.className = 'badge good';
     const inputSize = Model.inputWidth && Model.inputHeight ? ` (${Model.inputWidth} × ${Model.inputHeight})` : ' (dynamic size)';
     modelStatus.textContent = 'Inputs: ' + Model.inputNames.join(', ') + inputSize + '  →  output: ' + Model.outputNames[0] + (Model.hasMask ? '' : ' · no mask input detected');
-    engineSelect.value = 'lama';
+    updateAiModelInfo();
   }
 
   chooseModelBtn.addEventListener('click', () => modelFileInput.click());
@@ -1124,17 +1267,197 @@
     return resultCanvas;
   }
 
+  function drawEdgePadding(context, source, x, y, width, height, targetWidth, targetHeight){
+    if (x > 0) context.drawImage(source, x, y, 1, height, 0, y, x, height);
+    if (targetWidth > width) context.drawImage(source, x + width - 1, y, 1, height, x + width, y, targetWidth - width, height);
+    if (y > 0) context.drawImage(source, 0, y, targetWidth, 1, 0, 0, targetWidth, y);
+    if (targetHeight > height) context.drawImage(source, x, y + height - 1, targetWidth, 1, x, y + height, targetWidth, targetHeight - height);
+  }
+
+  async function runOnnxOnOriginal(sourceImage){
+    const originalWidth = sourceImage.width;
+    const originalHeight = sourceImage.height;
+    const targetWidth = Model.inputWidth || nextMultipleOf8(originalWidth);
+    const targetHeight = Model.inputHeight || nextMultipleOf8(originalHeight);
+    if (!targetWidth || !targetHeight || targetWidth > 8192 || targetHeight > 8192){
+      throw new Error('The model reports image dimensions that this browser cannot allocate.');
+    }
+    const scale = Math.min(targetWidth / originalWidth, targetHeight / originalHeight);
+    const drawWidth = Math.max(1, Math.round(originalWidth * scale));
+    const drawHeight = Math.max(1, Math.round(originalHeight * scale));
+    const offsetX = Math.floor((targetWidth - drawWidth) / 2);
+    const offsetY = Math.floor((targetHeight - drawHeight) / 2);
+
+    const inputCanvas = document.createElement('canvas');
+    inputCanvas.width = targetWidth; inputCanvas.height = targetHeight;
+    const inputContext = inputCanvas.getContext('2d');
+    inputContext.drawImage(sourceImage, 0, 0, originalWidth, originalHeight, offsetX, offsetY, drawWidth, drawHeight);
+    drawEdgePadding(inputContext, inputCanvas, offsetX, offsetY, drawWidth, drawHeight, targetWidth, targetHeight);
+
+    const inputData = inputContext.getImageData(0, 0, targetWidth, targetHeight).data;
+    const feeds = {};
+    feeds[Model.imageInputName] = new ort.Tensor('float32', makeTensorData(inputData, null, targetWidth, targetHeight, Model.imageLayout, 3), tensorShape(Model.imageLayout, targetWidth, targetHeight, 3));
+    if (Model.hasMask){
+      const fullMask = new Uint8ClampedArray(targetWidth * targetHeight * 4);
+      for (let i=3; i<fullMask.length; i+=4) fullMask[i] = 255;
+      feeds[Model.maskInputName] = new ort.Tensor('float32', makeTensorData(inputData, fullMask, targetWidth, targetHeight, Model.maskLayout, 1), tensorShape(Model.maskLayout, targetWidth, targetHeight, 1));
+    }
+
+    const results = await Model.session.run(feeds);
+    const output = results[Model.outputNames[0]];
+    if (!output || !output.data) throw new Error('The AI model returned no image output.');
+    const outputShape = output.dims || Model.outputShape;
+    const layout = outputLayout(outputShape);
+    const size = getShapeSize(outputShape, layout);
+    const outputWidth = size.width || targetWidth;
+    const outputHeight = size.height || targetHeight;
+    const channels = layout === 'nhwc' ? Number(outputShape?.[3]) || 3 : Number(outputShape?.[1]) || 3;
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = outputWidth; outputCanvas.height = outputHeight;
+    const outputContext = outputCanvas.getContext('2d');
+    const outputImage = outputContext.createImageData(outputWidth, outputHeight);
+    let min = Infinity, max = -Infinity;
+    for (let i=0; i<Math.min(2000, output.data.length); i++){ min = Math.min(min, output.data[i]); max = Math.max(max, output.data[i]); }
+    const outputScale = min < 0 ? 127.5 : max > 1.5 ? 1 : 255;
+    const outputOffset = min < 0 ? 127.5 : 0;
+    const plane = outputWidth * outputHeight;
+    for (let i=0; i<plane; i++){
+      const pixel = i * 4;
+      const at = channel => output.data[layout === 'nhwc' ? i * channels + channel : channel * plane + i] || 0;
+      outputImage.data[pixel] = clamp255(at(0) * outputScale + outputOffset);
+      outputImage.data[pixel + 1] = clamp255(at(Math.min(1, channels - 1)) * outputScale + outputOffset);
+      outputImage.data[pixel + 2] = clamp255(at(Math.min(2, channels - 1)) * outputScale + outputOffset);
+      outputImage.data[pixel + 3] = 255;
+    }
+    outputContext.putImageData(outputImage, 0, 0);
+
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = originalWidth; resultCanvas.height = originalHeight;
+    resultCanvas.getContext('2d').drawImage(outputCanvas, offsetX, offsetY, drawWidth, drawHeight, 0, 0, originalWidth, originalHeight);
+    return resultCanvas;
+  }
+
+  async function decodeSourceImage(file){
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    try{
+      await new Promise((resolve, reject) => { image.onload = resolve; image.onerror = () => reject(new Error('The original image could not be decoded.')); image.src = url; });
+      return image;
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  aiRunBtn.addEventListener('click', async () => {
+    if (aiOperation) return;
+    if (!Model.session){
+      setAiStatus('Load a compatible ONNX model below before running the AI edit.');
+      return;
+    }
+    if (!originalImageData || !hasMask){
+      setAiStatus('Paint over the area you want the AI to change, then run the edit.');
+      return;
+    }
+    const generation = imageGeneration;
+    const operation = { id: ++aiOperationId, generation, cancelled: false };
+    aiOperation = operation;
+    aiRunBtn.disabled = true; aiDownloadBtn.disabled = true;
+    aiCancelBtn.hidden = false; aiRetryBtn.hidden = true; aiDismissBtn.hidden = true;
+    pushActionSnapshot();
+    operation.snapshot = actionHistory[actionHistory.length - 1];
+    setAiStatus('Preparing the selected area for the model…');
+    try{
+      setAiStatus(Model.inputWidth && Model.inputHeight ? `Resizing the selection to ${Model.inputWidth} × ${Model.inputHeight}px…` : 'Preparing dynamic model dimensions…');
+      const result = await aiFill();
+      if (!isAiOperationCurrent(operation)){ removeAiSnapshot(operation); return; }
+      if (!result){ removeAiSnapshot(operation); throw new Error('The AI model returned no usable image.'); }
+      setAiStatus('Reconstructing the result at the original image dimensions…');
+      const sourceImage = await decodeSourceImage(sourceFile);
+      if (!isAiOperationCurrent(operation)){ removeAiSnapshot(operation); return; }
+      const nativeResult = document.createElement('canvas');
+      nativeResult.width = sourceImage.width;
+      nativeResult.height = sourceImage.height;
+      nativeResult.getContext('2d').drawImage(result, 0, 0, result.width, result.height, 0, 0, nativeResult.width, nativeResult.height);
+      canvas.width = nativeResult.width;
+      canvas.height = nativeResult.height;
+      ctx.drawImage(nativeResult, 0, 0);
+      originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      compareSnapshot = null;
+      applyZoom();
+      updateZoomLabel();
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      maskCanvas.width = canvas.width;
+      maskCanvas.height = canvas.height;
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      maskHistory = []; hasMask = false;
+      aiResult = nativeResult;
+      aiPreviewCanvas.width = nativeResult.width; aiPreviewCanvas.height = nativeResult.height;
+      aiPreviewCanvas.getContext('2d').drawImage(aiResult, 0, 0);
+      aiPreviewFrame.hidden = false;
+      aiDownloadBtn.disabled = false;
+      setAiStatus(`Completed at the original ${nativeResult.width} × ${nativeResult.height}px dimensions.`);
+      saveSession();
+      aiOperation = null;
+      resetAiOperationButtons();
+    }catch(err){
+      if (isAiOperationCurrent(operation)){
+        removeAiSnapshot(operation);
+        aiOperation = null;
+        aiCancelBtn.hidden = true;
+        aiRetryBtn.hidden = false;
+        aiDismissBtn.hidden = false;
+        setAiStatus(err.name === 'AbortError' ? 'AI editing was canceled. Your original image is safe.' : 'AI editing failed. Your original image is safe.');
+        console.error('AI edit failed', err);
+      }
+    }finally{
+      if (aiOperation === operation) aiOperation = null;
+      if (aiOperation !== operation) updateAiActionState();
+    }
+  });
+
+  aiCancelBtn.addEventListener('click', () => {
+    if (!aiOperation) return;
+    aiOperation.cancelled = true;
+    aiOperation = null;
+    aiCancelBtn.hidden = true;
+    aiRetryBtn.hidden = false;
+    aiDismissBtn.hidden = false;
+    setAiStatus('AI editing was canceled. Your original image is safe.');
+    updateAiActionState();
+  });
+  aiRetryBtn.addEventListener('click', () => {
+    aiRetryBtn.hidden = true;
+    aiDismissBtn.hidden = true;
+    aiRunBtn.click();
+  });
+  aiDismissBtn.addEventListener('click', () => {
+    aiRetryBtn.hidden = true;
+    aiDismissBtn.hidden = true;
+    setAiStatus('Ready to edit the current selection.');
+  });
+
+  aiDownloadBtn.addEventListener('click', () => {
+    if (!aiResult) return;
+    aiResult.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.download = nextExportFilename('png'); link.href = url; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    }, 'image/png');
+  });
+
   async function aiFill(){
-    if (!Model.session){ setStatus('Load an ONNX inpainting model on the "AI model" tab first.'); return null; }
+    if (!Model.session){ setAiStatus('Load an ONNX model in the AI Editor settings first.'); return null; }
     const pad = parseInt(maskPadInput.value,10);
     const bbox = maskBoundingBox(pad);
     if (!bbox) return null;
-    setStatus('Running the ONNX model on the masked region…');
+    if (activeSection === 'ai') setAiStatus('Running the AI model on the selected region…');
+    else setStatus('Running the ONNX model on the masked region…');
     let patchResult;
     try{
       patchResult = await runOnnxOnRegion(bbox);
     }catch(err){
-      setStatus('AI fill failed: ' + err.message + ' — check the "AI model" tab for detected input/output names and shapes.');
+      const message = 'AI processing failed: ' + err.message + ' — check the AI Editor model settings.';
+      if (activeSection === 'ai') setAiStatus(message);
+      else setStatus(message);
       return null;
     }
 
@@ -1175,8 +1498,7 @@
     pushActionSnapshot();
     let result;
     try{
-      if (engineSelect.value === 'lama') result = await aiFill();
-      else result = await quickFill();
+      result = await quickFill();
     }catch(err){
       setStatus('Fill failed: ' + err.message);
       actionHistory.pop();
@@ -1207,20 +1529,66 @@
     cleanCanvas.getContext('2d').putImageData(originalImageData, 0, 0);
     return cleanCanvas;
   }
+  function getExportDimensions(){
+    if (downloadResolution.value === 'custom'){
+      return {
+        width: Math.max(1, parseInt(exportWidth.value, 10) || canvas.width),
+        height: Math.max(1, parseInt(exportHeight.value, 10) || canvas.height)
+      };
+    }
+    return sourceDimensions || { width: canvas.width, height: canvas.height };
+  }
+  function createExportCanvas(){
+    const dimensions = getExportDimensions();
+    const output = document.createElement('canvas');
+    output.width = dimensions.width; output.height = dimensions.height;
+    const outputContext = output.getContext('2d');
+    outputContext.imageSmoothingEnabled = true;
+    outputContext.imageSmoothingQuality = 'high';
+    outputContext.drawImage(createCleanCanvas(), 0, 0, canvas.width, canvas.height, 0, 0, output.width, output.height);
+    return output;
+  }
+  function updateExportControls(){
+    const isPng = downloadFormat.value === 'png';
+    exportCustomSize.hidden = downloadResolution.value !== 'custom';
+    exportQualityWrap.hidden = isPng;
+    exportQualityHint.textContent = isPng ? 'PNG is lossless.' : 'Higher quality creates a larger file.';
+  }
+  function updatePreviewCanvas(){
+    if (!originalImageData) return;
+    const output = createExportCanvas();
+    previewCanvas.width = output.width;
+    previewCanvas.height = output.height;
+    previewCanvas.getContext('2d').drawImage(output, 0, 0);
+    const dimensions = getExportDimensions();
+    previewNote.textContent = `${dimensions.width} × ${dimensions.height}px · ${downloadFormat.value === 'jpeg' ? 'JPG' : downloadFormat.value.toUpperCase()}${downloadFormat.value === 'png' ? ' · lossless' : ' · ' + exportQuality.value + '% quality'}`;
+  }
   async function openPreview(){
     if (!originalImageData) return;
-    const format = downloadFormat.value;
-    previewCanvas.width = canvas.width;
-    previewCanvas.height = canvas.height;
-    previewCanvas.getContext('2d').putImageData(originalImageData, 0, 0);
-    previewNote.textContent = stripMetadata.checked || format !== 'jpeg'
-      ? 'Metadata will be removed from this download.'
-      : 'Original JPEG metadata will be kept where available.';
+    if (downloadResolution.value === 'original' && sourceDimensions){
+      exportWidth.value = sourceDimensions.width;
+      exportHeight.value = sourceDimensions.height;
+    }
+    updateExportControls();
+    updatePreviewCanvas();
     previewModal.hidden = false;
     previewClose.focus();
   }
   downloadBtn.addEventListener('click', openPreview);
   metadataDownloadBtn.addEventListener('click', () => downloadBtn.click());
+  downloadFormat.addEventListener('change', () => { updateExportControls(); if (!previewModal.hidden) updatePreviewCanvas(); });
+  downloadResolution.addEventListener('change', () => {
+    if (downloadResolution.value === 'custom' && originalImageData){
+      exportWidth.value = canvas.width;
+      exportHeight.value = canvas.height;
+    }
+    updateExportControls();
+    if (!previewModal.hidden) updatePreviewCanvas();
+  });
+  [exportWidth, exportHeight, exportQuality].forEach(input => input.addEventListener('input', () => {
+    exportQualityValue.textContent = exportQuality.value + '%';
+    if (!previewModal.hidden) updatePreviewCanvas();
+  }));
 
   resizeWidth.addEventListener('input', () => {
     if (!resizeKeepRatio.checked || !originalImageData) return;
@@ -1270,9 +1638,11 @@
     return null;
   }
   async function createExportBlob(fmt){
-    const mime = fmt === 'jpeg' ? 'image/jpeg' : 'image/png';
-    const dataUrl = createCleanCanvas().toDataURL(mime, fmt === 'jpeg' ? 0.92 : undefined);
-    const output = new Uint8Array(await (await fetch(dataUrl)).arrayBuffer());
+    const mime = fmt === 'jpeg' ? 'image/jpeg' : fmt === 'webp' ? 'image/webp' : 'image/png';
+    const quality = fmt === 'png' ? undefined : Number(exportQuality.value) / 100;
+    const encoded = await new Promise(resolve => createExportCanvas().toBlob(resolve, mime, quality));
+    if (!encoded) throw new Error('The selected export format is unavailable in this browser.');
+    const output = new Uint8Array(await encoded.arrayBuffer());
     if (fmt !== 'jpeg' || stripMetadata.checked) return new Blob([output], {type:mime});
     const exif = await readOriginalExifSegment();
     return exif ? new Blob([output.slice(0,2), exif, output.slice(2)], {type:mime}) : new Blob([output], {type:mime});
@@ -1284,16 +1654,19 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !previewModal.hidden) closePreview(); });
   previewDownload.addEventListener('click', async () => {
     const fmt = downloadFormat.value;
-    const ext = fmt === 'jpeg' ? 'jpg' : 'png';
+    const ext = fmt === 'jpeg' ? 'jpg' : fmt === 'webp' ? 'webp' : 'png';
     previewDownload.disabled = true;
-    const blob = await createExportBlob(fmt);
-    const link = document.createElement('a');
-    link.download = 'inpainted.' + ext;
-    link.href = URL.createObjectURL(blob);
-    link.click();
-    URL.revokeObjectURL(link.href);
-    previewDownload.disabled = false;
-    closePreview();
+    try{
+      const blob = await createExportBlob(fmt);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = nextExportFilename(ext);
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      closePreview();
+    }catch(err){ previewNote.textContent = 'Could not create this export. Choose another format or resolution.'; }
+    finally{ previewDownload.disabled = false; }
   });
   // ============================================================
   // Metadata (EXIF) viewer
@@ -1426,7 +1799,10 @@
       savedSessionUrl = URL.createObjectURL(saved.blob);
       savedSessionPreview.src = savedSessionUrl;
       savedSession.hidden = false;
-      loadImageFile(file, ['remove','metadata','resize'].includes(saved.section) ? saved.section : 'home');
+      const restoredDimensions = saved.sourceWidth && saved.sourceHeight
+        ? { width:saved.sourceWidth, height:saved.sourceHeight }
+        : null;
+      loadImageFile(file, ['remove','metadata','resize','ai'].includes(saved.section) ? saved.section : 'home', restoredDimensions);
     }catch(e){ /* no previous image session */ }
   })();
 

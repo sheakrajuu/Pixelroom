@@ -1,6 +1,6 @@
 {
-  "name": "Pixelroom",
-  "short_name": "Pixelroom",
+  "name": "Pixelroomedit",
+  "short_name": "Pixelroomedit",
   "description": "Private browser-based photo editing.",
   "start_url": "./index.html",
   "display": "standalone",
