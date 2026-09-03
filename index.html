@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Pixelroomedit — private image cleanup</title>
+<meta name="theme-color" content="#111417">
+<link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260902.4">
+<link rel="apple-touch-icon" href="favicon.svg?v=20260902.2">
+<link rel="manifest" href="site.webmanifest?v=20260902.1">
+<link rel="stylesheet" href="styles.css?v=20260903.6">
+</head>
+<body>
+
+<nav class="site-nav" aria-label="Main navigation">
+  <a class="nav-brand" href="#top"><img class="nav-mark" src="favicon.svg?v=20260902.4" alt="">Pixelroomedit</a>
+  <div class="nav-links">
+    <a href="#editor">Editor</a>
+    <a href="#guide">How it works</a>
+    <a href="#privacy">Privacy</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="brand-mark"><img src="favicon.svg?v=20260902.4" alt="Pixelroomedit logo"></div>
+  <div>
+    <p class="eyebrow">PRIVATE PHOTO EDITOR</p>
+    <h1>Edit photos without the upload.</h1>
+    <p class="sub">Remove unwanted details, make quick adjustments, and export a clean copy from your browser.</p>
+  </div>
+  <div class="privacy-pill"><span></span> Local only</div>
+</header>
+
+<main class="card" id="editor">
+  <div class="dropzone" id="dropzone">
+    <div class="upload-icon" aria-hidden="true">↑</div>
+    <div id="uploadTitle">Select an image to begin</div>
+    <span id="uploadHint">Drag it here or click to browse</span>
+    <div class="saved-session" id="savedSession" hidden>
+      <img id="savedSessionPreview" alt="Saved image preview">
+      <span id="savedSessionName"></span>
+      <button type="button" id="resumeBtn">Continue editing</button>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+  <div class="section-choices" id="sectionChoices" aria-label="Choose an image task">
+    <button class="section-choice active" data-section="remove" disabled>
+      <span class="choice-mark" aria-hidden="true">01</span><strong>Remove object or watermark</strong><span>Paint over it and fill the selection</span>
+    </button>
+    <button class="section-choice" data-section="metadata" disabled>
+      <span class="choice-mark" aria-hidden="true">02</span><strong>Remove image metadata</strong><span>Clean camera, date, and location details</span>
+    </button>
+    <button class="section-choice" data-section="resize" disabled>
+      <span class="choice-mark" aria-hidden="true">03</span><strong>Resize image</strong><span>Set a new pixel width and height</span>
+    </button>
+    <button class="section-choice ai-choice" data-section="ai" disabled>
+      <span class="choice-mark" aria-hidden="true">04</span><strong>AI Editor <em>Coming soon</em></strong><span>Model-powered edits are being prepared</span>
+    </button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="section-back-wrap">
+      <button class="secondary small" id="sectionBack" hidden>× Close editor</button>
+    </div>
+
+    <div class="section-home" id="sectionHome">
+      <p class="eyebrow">IMAGE READY</p>
+      <h2>What would you like to do?</h2>
+      <p class="hint">Choose one task below. Your image stays in this browser while you work.</p>
+      <div class="section-actions"><button class="secondary small" id="changeImageBtn">Change image</button></div>
+    </div>
+
+    <div class="section-tools section-ai" id="aiEditorSection" hidden>
+      <div class="ai-coming-soon">
+        <p class="eyebrow">AI EDITOR</p>
+        <h2>Coming soon</h2>
+        <p class="hint">We are preparing a private, browser-friendly AI editing experience. The local editing tools are ready today.</p>
+        <div class="coming-soon-note"><span class="coming-soon-dot"></span><span>Model processing is temporarily unavailable</span></div>
+      </div>
+      <div class="ai-legacy-controls" hidden>
+      <p class="eyebrow">AI EDITOR</p>
+      <h2>Process the original at model size</h2>
+      <p class="hint">Load an AI model, then run it on the original image. The model's detected input requirements are used automatically and the result is reconstructed at the original dimensions.</p>
+      <div class="field-row">
+        <span id="aiModelBadge" class="badge">No model loaded</span>
+        <span id="aiModelRequirements" class="status">Choose a compatible model below.</span>
+      </div>
+      <p class="hint ai-instruction">Paint over the area you want the AI to change, then choose Run AI edit.</p>
+      <div class="section-actions">
+        <button id="aiRunBtn" disabled>Run AI edit</button>
+        <button class="secondary" id="aiCancelBtn" hidden>Cancel</button>
+        <button class="secondary" id="aiRetryBtn" hidden>Retry</button>
+        <button class="secondary small" id="aiDismissBtn" hidden>Dismiss</button>
+        <button class="secondary" id="aiDownloadBtn" disabled>Download AI result</button>
+      </div>
+      <div class="status ai-status" id="aiStatus" role="status" aria-live="polite">Ready when an AI model is loaded.</div>
+      <div class="ai-preview-frame" id="aiPreviewFrame" hidden><canvas id="aiPreviewCanvas"></canvas></div>
+      <div class="panel ai-model-settings active" id="modelPanel">
+        <div class="field-row"><span class="badge">AI model</span><span class="hint">Use a compatible RGB ONNX image model. It stays cached in this browser.</span></div>
+        <div class="field-row">
+          <button class="small" id="chooseModelBtn">Choose .onnx file</button>
+          <input type="file" id="modelFileInput" accept=".onnx,application/octet-stream">
+          <button class="secondary small" id="forgetModelBtn">Forget cached model</button>
+        </div>
+        <div class="url-row">
+          <input type="text" id="modelUrlInput" placeholder="or paste a direct model URL" value="https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx">
+          <button class="secondary small" id="modelUrlBtn">Fetch</button>
+        </div>
+        <progress id="modelProgress" value="0" max="100" style="display:none;"></progress>
+        <div class="status" id="modelStatus" style="margin-top:8px;"></div>
+        <p class="hint">The adapter detects common NCHW or NHWC RGB models, with an optional single-channel mask input.</p>
+      </div>
+      </div>
+    </div>
+
+    <div class="toolbar section-editor" id="toolbar">
+      <button class="tool-btn active" id="toolBrush" data-tool="brush" title="Brush">
+        <svg viewBox="0 0 24 24"><circle cx="8" cy="16" r="3.4"></circle><line x1="10.4" y1="13.6" x2="18" y2="6"></line><path d="M18 6 c1.4-1.4 3-1.4 3.6 0 c0.6 1.6-1 3-1 3l-2.6 2.6"></path></svg>
+        <span class="label">Brush</span>
+      </button>
+      <button class="tool-btn" id="toolEraser" data-tool="eraser" title="Eraser">
+        <svg viewBox="0 0 24 24"><rect x="6" y="9" width="14" height="8" rx="1.5" transform="rotate(-20 13 13)"></rect><line x1="4" y1="20" x2="14" y2="20"></line></svg>
+        <span class="label">Eraser</span>
+      </button>
+      <button class="tool-btn" id="toolCrop" data-tool="crop" title="Crop">
+        <svg viewBox="0 0 24 24"><path d="M5 2v15a2 2 0 0 0 2 2h15M2 5h15a2 2 0 0 1 2 2v15"></path></svg>
+        <span class="label">Crop</span>
+      </button>
+      <button class="tool-btn small" id="rotateCCW" title="Rotate left">
+        <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 1 2.6 5.9" fill="none"></path><polygon points="4,7 4,13 10,13" stroke="none" fill="var(--ink)"></polygon></svg>
+      </button>
+      <button class="tool-btn small" id="rotateCW" title="Rotate right">
+        <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 0-2.6 5.9" fill="none"></path><polygon points="20,7 20,13 14,13" stroke="none" fill="var(--ink)"></polygon></svg>
+      </button>
+      <div class="zoom-group">
+        <button class="tool-btn small" id="zoomOut" title="Zoom out">
+          <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="7.5" y1="10.5" x2="13.5" y2="10.5"></line><line x1="15.5" y1="15.5" x2="20.5" y2="20.5"></line></svg>
+        </button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button class="tool-btn small" id="zoomIn" title="Zoom in">
+          <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><line x1="7.5" y1="10.5" x2="13.5" y2="10.5"></line><line x1="10.5" y1="7.5" x2="10.5" y2="13.5"></line><line x1="15.5" y1="15.5" x2="20.5" y2="20.5"></line></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="canvas-scroll" id="canvasScroll">
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="canvas"></canvas>
+        <div id="cropBox">
+          <div class="crop-handle nw"></div>
+          <div class="crop-handle ne"></div>
+          <div class="crop-handle sw"></div>
+          <div class="crop-handle se"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="cropActions" class="controls section-editor" style="display:none;">
+      <button id="cropApply">Apply crop</button>
+      <button class="secondary" id="cropCancel">Cancel</button>
+    </div>
+
+    <div class="controls section-editor" id="brushControls">
+      <div class="brush-control">Brush <input type="range" id="brushSize" min="4" max="90" value="26"></div>
+      <div class="brush-control">Padding <input type="range" id="maskPad" min="0" max="60" value="18"></div>
+      <button class="secondary small" id="undoBtn" disabled>Undo stroke</button>
+      <button class="secondary small" id="undoActionBtn" disabled>Undo last action</button>
+      <button class="secondary small" id="compareBtn" disabled title="Hold to see the image before the last action">Hold to compare</button>
+      <button class="secondary small" id="clearBtn">New image</button>
+    </div>
+
+    <div class="row section-remove">
+      <div class="status" id="status">Paint over the area to remove.</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button id="fillBtn" disabled>Remove selection</button>
+        <select id="downloadFormat">
+          <option value="png">PNG</option>
+          <option value="jpeg">JPEG</option>
+          <option value="webp">WebP</option>
+        </select>
+        <button class="secondary" id="downloadBtn" disabled>Download</button>
+      </div>
+    </div>
+
+    <div class="panel-tabs section-editor section-remove">
+      <button class="panel-tab active" data-panel="fillPanel">Fill settings</button>
+    </div>
+
+    <div class="panel active section-editor" id="fillPanel">
+      <div class="field-row">
+        <div class="brush-control">Edge feather <input type="range" id="featherRange" min="0" max="30" value="10"><span id="featherVal">10px</span></div>
+      </div>
+      <p class="hint">Padding adds context around the selection. Feather softens AI edges.</p>
+    </div>
+
+    <div class="section-tools section-metadata" id="metadataSection">
+      <p class="eyebrow">METADATA CLEANUP</p>
+      <h2>Export a clean copy</h2>
+      <p class="hint">The canvas export removes embedded camera, date, and location metadata.</p>
+      <label class="metadata-toggle"><input type="checkbox" id="stripMetadata" checked> Remove metadata from export</label>
+      <div class="section-actions"><button id="metadataDownloadBtn">Download clean image</button></div>
+      <div class="metadata-info">
+        <p class="eyebrow">PHOTO INFO</p>
+        <div id="metaContent"><p class="hint">Load a photo to see its embedded metadata here.</p></div>
+      </div>
+    </div>
+
+    <div class="section-tools section-resize" id="resizeSection">
+      <p class="eyebrow">IMAGE RESIZE</p>
+      <h2>Choose the output dimensions</h2>
+      <div class="resize-grid">
+        <label>Width <input type="number" id="resizeWidth" min="1" max="2200" step="1"></label>
+        <label>Height <input type="number" id="resizeHeight" min="1" max="2200" step="1"></label>
+        <label class="resize-lock"><input type="checkbox" id="resizeKeepRatio" checked> Keep aspect ratio</label>
+      </div>
+      <div class="section-actions"><button id="resizeApply">Apply resize</button><button class="secondary" id="resizeReset">Reset fields</button></div>
+    </div>
+
+  </div>
+</main>
+
+<div class="preview-modal" id="previewModal" role="dialog" aria-modal="true" aria-labelledby="previewTitle" hidden>
+  <div class="preview-dialog">
+    <div class="preview-header">
+      <div><p class="eyebrow">FINAL REVIEW</p><h2 id="previewTitle">Your edited image is ready</h2></div>
+      <button class="preview-close secondary small" id="previewClose" title="Close preview" aria-label="Close preview">×</button>
+    </div>
+    <div class="preview-frame"><canvas id="previewCanvas"></canvas></div>
+    <p class="preview-note">Metadata setting applied.</p>
+    <div class="export-options">
+      <label>Resolution
+        <select id="downloadResolution">
+          <option value="original">Original resolution</option>
+          <option value="custom">Custom resolution</option>
+        </select>
+      </label>
+      <div class="export-custom-size" id="exportCustomSize" hidden>
+        <label>Width <input type="number" id="exportWidth" min="1" step="1"></label>
+        <label>Height <input type="number" id="exportHeight" min="1" step="1"></label>
+      </div>
+      <label class="export-quality" id="exportQualityWrap">Quality <input type="range" id="exportQuality" min="10" max="100" value="100"><span id="exportQualityValue">100%</span></label>
+      <span class="hint" id="exportQualityHint">PNG is lossless.</span>
+    </div>
+    <div class="preview-actions"><button class="secondary" id="previewCancel">Keep editing</button><button id="previewDownload">Download image</button></div>
+  </div>
+</div>
+
+<section class="about-grid" id="guide" aria-label="About Pixelroomedit">
+  <article id="tools">
+    <p class="eyebrow">TOOLS</p>
+    <h2>What you can do</h2>
+    <p>Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill handles simple backgrounds, while AI Editor handles model-based edits on selected areas.</p>
+  </article>
+  <article id="how-it-works">
+    <p class="eyebrow">HOW IT WORKS</p>
+    <h2>From photo to export</h2>
+    <p>Select a photo, paint over what should disappear, then choose Fill. The result is rendered in the browser and can be downloaded when it looks right.</p>
+  </article>
+  <article id="privacy">
+    <p class="eyebrow">PRIVACY</p>
+    <h2>Your image stays with you</h2>
+    <p>Photos and masks are processed locally in this browser. Nothing is uploaded. When enabled, Remove metadata strips EXIF details such as GPS data from the export.</p>
+  </article>
+</section>
+
+<footer>
+  <span>Pixelroomedit</span>
+  <span>Images stay local</span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<script src="script.js?v=20260903.6"></script>
+</body>
+</html>
