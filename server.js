@@ -310,7 +310,7 @@ function serveStatic(req, res){
   const filePath = path.resolve(root, relative);
   if (!filePath.startsWith(root + path.sep) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) return json(res, 404, { error:'Not found' });
   const types = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.webmanifest':'application/manifest+json' };
-  res.writeHead(200, { 'Content-Type':types[path.extname(filePath)] || 'application/octet-stream' });
+  res.writeHead(200, { 'Content-Type':types[path.extname(filePath)] || 'application/octet-stream', 'Cache-Control':'no-store, no-cache, must-revalidate' });
   fs.createReadStream(filePath).pipe(res);
 }
 const server = http.createServer(async (req, res) => {
