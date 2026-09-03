@@ -155,7 +155,6 @@ async function localAnalyze(sourceUrl){
     for (const item of itemFormats) {
       if (!item.url || !item.format_id || seenItem.has(item.format_id)) continue;
       if (item.vcodec === 'none' && item.acodec === 'none' && !['jpg','jpeg','png','webp','gif'].includes(String(item.ext || '').toLowerCase())) continue;
-      if (item.vcodec !== 'none' && item.acodec === 'none') continue;
       const isAudio = item.vcodec === 'none' && !['jpg','jpeg','png','webp','gif'].includes(String(item.ext || '').toLowerCase());
       const isPicture = !isAudio && ['jpg','jpeg','png','webp','gif'].includes(String(item.ext || '').toLowerCase()) && !item.height;
       const height = item.height ? `${item.height}p` : '';
@@ -163,7 +162,7 @@ async function localAnalyze(sourceUrl){
       const choiceKey = isAudio ? 'audio' : label;
       if (seenChoices.has(choiceKey)) continue;
       const type = isPicture ? 'Image' : isAudio ? 'Audio' : (item.ext || 'Video').toUpperCase();
-      const format = makeFormat({ kind:isPicture ? 'direct' : 'local', sourceUrl, formatId:item.format_id, filename:sourceItem.title || info.title }, label, type, isPicture ? item.url : item.url, { filename:safeFilename(sourceItem.title || info.title) + '.' + (item.ext || 'mp4') });
+      const format = makeFormat({ kind:isPicture ? 'direct' : 'local', sourceUrl, formatId:item.format_id, filename:sourceItem.title || info.title, mediaType:type }, label, type, item.url, { filename:safeFilename(sourceItem.title || info.title) + '.' + (type === 'Audio' ? 'mp3' : type === 'Image' ? (item.ext || 'jpg') : 'mp4') });
       jobs.get(format.id).sourceUrl = sourceUrl;
       if (isPicture) jobs.get(format.id).sourceUrl = item.url;
       formats.push(format);
@@ -276,13 +275,20 @@ async function handleLocalDownload(req, res, job, jobId){
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pixelroom-media-'));
   const outputTemplate = path.join(tempDir, 'download.%(ext)s');
   try {
-    await runYtDlp(['--no-playlist', '--no-part', '--no-warnings', '--format', job.formatId, '--output', outputTemplate, job.sourceUrl], 120000);
+    const formatSelector = job.mediaType === 'Audio' ? 'bestaudio' : job.mediaType === 'Image' ? job.formatId : `${job.formatId}+bestaudio/${job.formatId}`;
+    const args = ['--no-playlist', '--no-part', '--no-warnings', '--format', formatSelector, '--output', outputTemplate];
+    if (job.mediaType !== 'Audio' && job.mediaType !== 'Image') args.push('--merge-output-format', 'mp4', '--recode-video', 'mp4');
+    if (job.mediaType === 'Audio') args.push('--extract-audio', '--audio-format', 'mp3');
+    args.push(job.sourceUrl);
+    await runYtDlp(args, 120000);
     const fileName = fs.readdirSync(tempDir).find(name => name.startsWith('download.'));
     if (!fileName) throw Object.assign(new Error('Download unavailable'), { code:'provider' });
     const filePath = path.join(tempDir, fileName);
     const stat = fs.statSync(filePath);
     if (stat.size > MAX_DOWNLOAD_BYTES) throw Object.assign(new Error('Download too large'), { code:'provider' });
-    res.writeHead(200, { 'Content-Type':fileName.endsWith('.mp4') ? 'video/mp4' : 'application/octet-stream', 'Content-Disposition':`attachment; filename="${safeFilename(job.filename)}-${job.formatId}.${path.extname(fileName).slice(1)}"`, 'Content-Length':stat.size, 'Cache-Control':'no-store' });
+    const outputExtension = job.mediaType === 'Audio' ? 'mp3' : job.mediaType === 'Image' ? path.extname(fileName).slice(1) : 'mp4';
+    const contentType = job.mediaType === 'Audio' ? 'audio/mpeg' : job.mediaType === 'Image' ? `image/${outputExtension === 'jpg' ? 'jpeg' : outputExtension}` : 'video/mp4';
+    res.writeHead(200, { 'Content-Type':contentType, 'Content-Disposition':`attachment; filename="${safeFilename(job.filename)}-${job.formatId}.${outputExtension}"`, 'Content-Length':stat.size, 'Cache-Control':'no-store' });
     await pipeline(fs.createReadStream(filePath), res);
   } finally {
     jobs.delete(jobId);
