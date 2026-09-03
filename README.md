@@ -23,6 +23,7 @@ Pixelroomedit is a browser-based image editor for removing unwanted objects and 
 - Responsive desktop and mobile layout
 - Touch drawing, pinch zoom, and pan while zoomed
 - Cancel, retry, and dismiss recovery for AI edits
+- Media Downloader frontend with backend analysis, format selection, cancellation, and local recent-download history
 
 ## How It Works
 
@@ -35,6 +36,29 @@ Pixelroomedit is a browser-based image editor for removing unwanted objects and 
 7. Review the export preview, choose PNG, JPG, or WebP plus resolution and quality, then select **Download image**.
 
 Only edit images that you own or have permission to modify.
+
+## Media Downloader Backend
+
+The Media Downloader is intentionally server-backed. The browser sends a submitted public URL to `POST /api/media/analyze`:
+
+```json
+{ "url": "https://supported.example/public-media" }
+```
+
+The endpoint should return structured metadata without exposing provider credentials:
+
+```json
+{
+	"title": "Example video",
+	"source": "Example",
+	"thumbnail": "https://cdn.example/thumbnail.jpg",
+	"duration": "00:32",
+	"mediaType": "Video",
+	"formats": [{ "id": "video-720", "label": "720p", "type": "MP4", "filename": "example.mp4" }]
+}
+```
+
+The browser posts the selected `formatId` and URL to `POST /api/media/download`. The server should validate the URL again, enforce an allowlist of providers, protect against SSRF and redirects, cap download size and processing time, sanitize filenames, and return a streamed media response or a short-lived authorized download. Temporary files and jobs should be deleted after completion or expiration, and submitted URLs should not be logged unnecessarily. The frontend never contains provider API keys and stores only lightweight recent-download details in local storage, never media files.
 
 ## Privacy and Metadata
 
@@ -50,11 +74,32 @@ The AI model is also processed in the browser. If a model is loaded, it may be c
 
 ## Run Locally
 
-Pixelroomedit is a static web app. A local HTTP server is recommended for testing:
+Use the included Node server so the Media Downloader's POST endpoints are available:
 
 ```bash
-python -m http.server 8000
+npm start
 ```
+
+The Media Downloader uses the locally installed `yt-dlp` extractor by default. On Windows, `py -m yt_dlp` must work. On Linux/macOS, install the `yt-dlp` command. `ffmpeg` is optional and is only needed for formats that require merging or conversion.
+
+For stronger Instagram carousel support, configure Apify on the server. The Instagram Actor returns the post's public `displayUrl`, carousel image URLs, and video URLs:
+
+```powershell
+$env:APIFY_TOKEN = "your-apify-token"
+node server.js
+```
+
+The token is read only by `server.js` and is never sent to the browser. Apify's Instagram Actor uses pay-per-event pricing; review the current pricing and usage limits before deploying it publicly.
+
+For deployments that use a separate permitted provider instead, configure it before starting the server:
+
+```powershell
+$env:MEDIA_PROVIDER_URL = "https://your-provider.example"
+$env:MEDIA_PROVIDER_API_KEY = "your-server-side-key"
+npm start
+```
+
+The provider should implement the Cobalt-compatible JSON request/response shape described in the Media Downloader Backend section. Do not put either environment variable in client-side JavaScript or commit them to the repository. The local extractor does not require either variable.
 
 Then open:
 
@@ -62,15 +107,17 @@ Then open:
 http://localhost:8000/index.html
 ```
 
-You can also open `index.html` directly in a browser, although some browser features and external resources work more reliably over HTTP.
+Opening `index.html` directly or using `python -m http.server` will disable the downloader API because those servers do not handle its POST requests.
 
 ## Deploy
 
-Upload these files to any static hosting service such as GitHub Pages, Netlify, or Cloudflare Pages:
+The image editor files can be uploaded to any static hosting service such as GitHub Pages, Netlify, or Cloudflare Pages. The Media Downloader additionally requires the included Node server or an equivalent backend deployment:
 
 - `index.html`
 - `script.js`
 - `styles.css`
+- `server.js`
+- `package.json`
 
 The app loads ONNX Runtime Web from jsDelivr and the upload panel uses a remote Unsplash image, so deployed users need an internet connection for those resources. Basic image editing does not require an AI service or API key.
 

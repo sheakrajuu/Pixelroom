@@ -1,0 +1,12 @@
+{
+  "name": "pixelroomedit",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Private image editor with a server-backed media downloader",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  }
+}

@@ -90,6 +90,21 @@
   const aiStatus = document.getElementById('aiStatus');
   const aiPreviewFrame = document.getElementById('aiPreviewFrame');
   const aiPreviewCanvas = document.getElementById('aiPreviewCanvas');
+  const mediaSection = document.getElementById('mediaSection');
+  const mediaUrlInput = document.getElementById('mediaUrlInput');
+  const mediaAnalyzeBtn = document.getElementById('mediaAnalyzeBtn');
+  const pasteClipboardBtn = document.getElementById('pasteClipboardBtn');
+  const mediaStatus = document.getElementById('mediaStatus');
+  const mediaProgress = document.getElementById('mediaProgress');
+  const mediaCancelBtn = document.getElementById('mediaCancelBtn');
+  const mediaPreview = document.getElementById('mediaPreview');
+  const mediaItems = document.getElementById('mediaItems');
+  const mediaRecent = document.getElementById('mediaRecent');
+  const mediaRecentList = document.getElementById('mediaRecentList');
+  const clearMediaRecentBtn = document.getElementById('clearMediaRecentBtn');
+  let mediaAbortController = null;
+  let mediaInfo = null;
+  const mediaRecentKey = 'pixelroomedit-media-recent';
   const downloadResolution = document.getElementById('downloadResolution');
   const exportCustomSize = document.getElementById('exportCustomSize');
   const exportWidth = document.getElementById('exportWidth');
@@ -234,6 +249,7 @@
     activeSection = name;
     drawing = false;
     panning = false;
+    if (name === 'media') stage.classList.add('active');
     stage.dataset.section = name;
     document.body.dataset.section = name;
     canvas.style.pointerEvents = name === 'remove' || name === 'ai' ? 'auto' : 'none';
@@ -246,12 +262,140 @@
     sectionEditor.forEach(element => { element.hidden = name !== 'remove' && name !== 'ai'; });
     sectionRemove.forEach(element => { element.hidden = name !== 'remove'; });
     aiEditorSection.hidden = name !== 'ai';
+    mediaSection.hidden = name !== 'media';
     metadataSection.hidden = name !== 'metadata';
     resizeSection.hidden = name !== 'resize';
     if (name === 'resize') updateResizeFields();
     saveSession();
   }
   sectionChoices.forEach(choice => choice.addEventListener('click', () => setSection(choice.dataset.section)));
+
+  function readMediaRecent(){
+    try{ return JSON.parse(localStorage.getItem(mediaRecentKey) || '[]'); }catch(e){ return []; }
+  }
+  function renderMediaRecent(){
+    const items = readMediaRecent();
+    mediaRecent.hidden = !items.length;
+    mediaRecentList.innerHTML = items.map(item => `<div class="media-recent-item"><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.source)} · ${escapeHtml(item.format)} · ${escapeHtml(item.date)}</small></span></div>`).join('');
+  }
+  function addMediaRecent(format){
+    const items = readMediaRecent().filter(item => item.url !== mediaInfo.url).slice(0, 4);
+    items.unshift({ title: mediaInfo.title || 'Downloaded media', source: mediaInfo.source || 'Supported source', format: format.label || format.type || 'Media', date: new Date().toLocaleString(), url: mediaInfo.url });
+    try{ localStorage.setItem(mediaRecentKey, JSON.stringify(items)); }catch(e){}
+    renderMediaRecent();
+  }
+  function validMediaUrl(value){
+    const trimmed = value.trim();
+    if (!trimmed) return { error:'Paste a public media URL to continue.' };
+    let parsed;
+    try{ parsed = new URL(trimmed); }catch(e){ return { error:'That link could not be processed. Check the URL and try again.' }; }
+    if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes('.')) return { error:'That link could not be processed. Use a complete public http or https URL.' };
+    return { url: parsed.href };
+  }
+  function setMediaBusy(busy, message){
+    mediaAnalyzeBtn.disabled = busy;
+    pasteClipboardBtn.disabled = busy;
+    mediaCancelBtn.hidden = !busy;
+    mediaProgress.hidden = !busy;
+    if (message) mediaStatus.textContent = message;
+  }
+  function mediaErrorMessage(response){
+    const messages = { unsupported:'This source is not currently supported.', private:'That media is unavailable.', deleted:'That media is unavailable.', timeout:'The provider took too long to respond.', provider:'Something went wrong. Please try again.' };
+    return messages[response?.code] || 'That link could not be processed. Please try again.';
+  }
+  function renderMediaInfo(info){
+    mediaInfo = { ...info, url: mediaUrlInput.value.trim() };
+    const items = Array.isArray(info.items) && info.items.length ? info.items : [{ title:info.title, thumbnail:info.thumbnail, source:info.source, duration:info.duration, mediaType:info.mediaType, formats:info.formats }];
+    mediaItems.innerHTML = '';
+    items.forEach((item, index) => {
+      const card = document.createElement('article');
+      card.className = 'media-item';
+      const image = item.thumbnail || item.formats?.find(format => format.type === 'Image')?.url;
+      card.innerHTML = `<div class="media-item-image">${image ? `<img src="${escapeHtml(image)}" alt="Media ${index + 1} preview">` : '<span class="media-item-placeholder">MEDIA</span>'}</div><div class="media-item-copy"><strong>${escapeHtml(item.title || info.title || `Media ${index + 1}`)}</strong><small>${escapeHtml(item.source || info.source || 'Supported source')}${item.duration ? ' · ' + escapeHtml(item.duration) : ''}</small></div><div class="media-item-formats"></div>`;
+      const formatWrap = card.querySelector('.media-item-formats');
+      const itemFormats = Array.isArray(item.formats) ? item.formats : [];
+      const videoFormats = itemFormats.filter(format => format.type !== 'Audio' && format.type !== 'Image');
+      const audioFormats = itemFormats.filter(format => format.type === 'Audio');
+      if (videoFormats.length) {
+        const row = document.createElement('div'); row.className = 'media-choice-row';
+        const options = document.createElement('div'); options.className = 'media-quality-options'; options.setAttribute('aria-label', 'Available video resolutions');
+        let selectedVideo = videoFormats[videoFormats.length - 1];
+        videoFormats.forEach(format => {
+          const option = document.createElement('button'); option.type = 'button'; option.className = 'media-quality-option'; option.textContent = format.label;
+          option.classList.toggle('active', format.id === selectedVideo.id);
+          option.addEventListener('click', () => { selectedVideo = format; options.querySelectorAll('.media-quality-option').forEach(item => item.classList.remove('active')); option.classList.add('active'); });
+          options.appendChild(option);
+        });
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'media-format'; button.innerHTML = '<span>Download video</span><span>↓</span>';
+        button.addEventListener('click', () => downloadMedia(selectedVideo));
+        row.append(options, button); formatWrap.appendChild(row);
+      }
+      if (audioFormats.length) {
+        const audio = audioFormats[0];
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'media-format media-audio-format'; button.innerHTML = `<span><strong>Audio only</strong><small>${escapeHtml(audio.type)}</small></span><span>Download</span>`;
+        button.addEventListener('click', () => downloadMedia(audio)); formatWrap.appendChild(button);
+      }
+      if (itemFormats.length === 1 && itemFormats[0].type === 'Image') {
+        const format = itemFormats[0];
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'media-format';
+        button.innerHTML = `<span><strong>Download image</strong><small>${escapeHtml(format.type)}</small></span><span>↓</span>`;
+        button.addEventListener('click', () => downloadMedia(format));
+        formatWrap.appendChild(button);
+      }
+      mediaItems.appendChild(card);
+    });
+    mediaPreview.hidden = !items.some(item => item.formats?.length);
+    if (mediaPreview.hidden) mediaStatus.textContent = 'The source was found, but no downloadable formats were returned.';
+  }
+  async function analyzeMedia(){
+    const result = validMediaUrl(mediaUrlInput.value);
+    if (result.error){ mediaStatus.textContent = result.error; mediaUrlInput.focus(); return; }
+    mediaUrlInput.value = result.url;
+    mediaPreview.hidden = true;
+    mediaAbortController = new AbortController();
+    setMediaBusy(true, 'Analyzing media...');
+    try{
+      const response = await fetch('/api/media/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ url:result.url }), signal:mediaAbortController.signal });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.code || 'provider');
+      renderMediaInfo(data);
+      mediaStatus.textContent = 'Media ready. Choose a download option.';
+    }catch(error){
+      if (error.name === 'AbortError') mediaStatus.textContent = 'Analysis cancelled.';
+      else mediaStatus.textContent = error.message === 'Failed to fetch' ? 'The media service is unavailable right now. Please try again later.' : mediaErrorMessage({ code:error.message });
+    }finally{ mediaAbortController = null; setMediaBusy(false); }
+  }
+  async function downloadMedia(format){
+    if (!mediaInfo || !format?.id) return;
+    mediaAbortController = new AbortController();
+    setMediaBusy(true, 'Preparing download...');
+    const phases = ['Processing...', 'Almost ready...'];
+    let phase = 0;
+    const phaseTimer = setInterval(() => { mediaStatus.textContent = phases[phase++] || phases.at(-1); }, 900);
+    try{
+      const response = await fetch('/api/media/download', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ url:mediaInfo.url, formatId:format.id }), signal:mediaAbortController.signal });
+      if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.code || 'provider'); }
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = downloadUrl; link.download = format.filename || 'media-download'; link.click();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+      addMediaRecent(format);
+      mediaStatus.textContent = 'Download ready.';
+    }catch(error){ mediaStatus.textContent = error.name === 'AbortError' ? 'Download cancelled.' : mediaErrorMessage({ code:error.message }); }
+    finally{ clearInterval(phaseTimer); mediaAbortController = null; setMediaBusy(false); }
+  }
+  mediaAnalyzeBtn.addEventListener('click', analyzeMedia);
+  mediaUrlInput.addEventListener('paste', () => setTimeout(() => { mediaUrlInput.value = mediaUrlInput.value.trim(); analyzeMedia(); }, 0));
+  mediaUrlInput.addEventListener('keydown', event => { if (event.key === 'Enter') analyzeMedia(); });
+  pasteClipboardBtn.addEventListener('click', async () => {
+    try{ mediaUrlInput.value = (await navigator.clipboard.readText()).trim(); mediaStatus.textContent = mediaUrlInput.value ? 'Link pasted. Select Download to analyze it.' : 'Clipboard is empty.'; mediaUrlInput.focus(); }
+    catch(e){ mediaStatus.textContent = 'Clipboard access is unavailable. Paste the link manually.'; mediaUrlInput.focus(); }
+  });
+  mediaCancelBtn.addEventListener('click', () => mediaAbortController?.abort());
+  clearMediaRecentBtn.addEventListener('click', () => { try{ localStorage.removeItem(mediaRecentKey); }catch(e){} renderMediaRecent(); });
+  renderMediaRecent();
 
   // ============================================================
   // Loading an image
@@ -373,7 +517,7 @@
     if (aiOperation) aiOperation.cancelled = true;
     stage.classList.remove('active');
     dropzone.style.display = '';
-    sectionChoices.forEach(choice => { choice.disabled = true; });
+    sectionChoices.forEach(choice => { choice.disabled = choice.dataset.section !== 'media'; });
     originalImageData = null;
     initialImageData = null;
     compareSnapshot = null;
@@ -423,7 +567,7 @@
     }, 'image/png');
     stage.classList.remove('active');
     dropzone.style.display = '';
-    sectionChoices.forEach(choice => { choice.disabled = true; });
+    sectionChoices.forEach(choice => { choice.disabled = choice.dataset.section !== 'media'; });
     setSection('home');
     history.replaceState({ pixelroom:'home' }, '', landingUrl);
   }

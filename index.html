@@ -56,8 +56,11 @@
     <button class="section-choice" data-section="resize" disabled>
       <span class="choice-mark" aria-hidden="true">03</span><strong>Resize image</strong><span>Set a new pixel width and height</span>
     </button>
-    <button class="section-choice" data-section="ai" disabled>
-      <span class="choice-mark" aria-hidden="true">04</span><strong>AI Editor</strong><span>Process a full image with a compatible AI model</span>
+    <button class="section-choice ai-choice" data-section="ai" disabled>
+      <span class="choice-mark" aria-hidden="true">04</span><strong>AI Editor <em>Coming soon</em></strong><span>Model-powered edits are being prepared</span>
+    </button>
+    <button class="section-choice media-choice" data-section="media">
+      <span class="choice-mark" aria-hidden="true">05</span><strong>Media Downloader</strong><span>Save media from a supported public link</span>
     </button>
   </div>
 
@@ -74,6 +77,13 @@
     </div>
 
     <div class="section-tools section-ai" id="aiEditorSection" hidden>
+      <div class="ai-coming-soon">
+        <p class="eyebrow">AI EDITOR</p>
+        <h2>Coming soon</h2>
+        <p class="hint">We are preparing a private, browser-friendly AI editing experience. The local editing tools are ready today.</p>
+        <div class="coming-soon-note"><span class="coming-soon-dot"></span><span>Model processing is temporarily unavailable</span></div>
+      </div>
+      <div class="ai-legacy-controls" hidden>
       <p class="eyebrow">AI EDITOR</p>
       <h2>Process the original at model size</h2>
       <p class="hint">Load an AI model, then run it on the original image. The model's detected input requirements are used automatically and the result is reconstructed at the original dimensions.</p>
@@ -106,6 +116,34 @@
         <div class="status" id="modelStatus" style="margin-top:8px;"></div>
         <p class="hint">The adapter detects common NCHW or NHWC RGB models, with an optional single-channel mask input.</p>
       </div>
+      </div>
+    </div>
+
+    <div class="section-tools section-media" id="mediaSection" hidden>
+      <div class="media-heading">
+        <div>
+          <p class="eyebrow">MEDIA DOWNLOADER</p>
+          <h2>Paste a link. Get the file.</h2>
+          <p class="hint">Use a public URL from a supported source. We will analyze it securely on the server.</p>
+        </div>
+        <div class="media-signal" aria-hidden="true"><span>↓</span><small>PUBLIC LINK<br>PRIVATE FLOW</small></div>
+      </div>
+      <div class="media-url-row">
+        <label class="sr-only" for="mediaUrlInput">Video or media URL</label>
+        <input type="url" id="mediaUrlInput" placeholder="Paste video or media URL here" autocomplete="url" spellcheck="false">
+        <button class="secondary small" id="pasteClipboardBtn" type="button">Paste from clipboard</button>
+        <button id="mediaAnalyzeBtn" type="button">Download <span aria-hidden="true">→</span></button>
+      </div>
+      <div class="media-supported"><span>Supported public sources</span><b>TikTok</b><b>Instagram</b><b>Facebook</b><b>YouTube</b><b>X</b>
+      </div>
+      <div class="status media-status" id="mediaStatus" role="status" aria-live="polite">Ready for a public media link.</div>
+      <div class="media-progress" id="mediaProgress" hidden><span></span></div>
+      <button class="secondary small media-cancel" id="mediaCancelBtn" type="button" hidden>Cancel</button>
+      <div class="media-preview" id="mediaPreview" hidden>
+        <p class="eyebrow">MEDIA FOUND</p>
+        <div class="media-items" id="mediaItems"></div>
+      </div>
+      <div class="media-recent" id="mediaRecent" hidden><div class="media-recent-header"><p class="eyebrow">RECENT DOWNLOADS</p><button class="secondary small" id="clearMediaRecentBtn" type="button">Clear history</button></div><div id="mediaRecentList"></div></div>
     </div>
 
     <div class="toolbar section-editor" id="toolbar">
@@ -260,7 +298,7 @@
 
 <footer>
   <span>Pixelroomedit</span>
-  <span>No upload. No account. No stored photos.</span>
+  <span>Images stay local · Media jobs are temporary</span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
