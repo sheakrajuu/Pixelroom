@@ -109,6 +109,16 @@ http://localhost:8000/index.html
 
 Opening `index.html` directly or using `python -m http.server` will disable the downloader API because those servers do not handle its POST requests.
 
+## Deploy On Render
+
+1. Push this project to a GitHub repository. Include `Dockerfile`, `render.yaml`, `server.js`, `package.json`, `index.html`, `script.js`, `styles.css`, `favicon.svg`, and `site.webmanifest`.
+2. Create or sign in to a Render account at https://dashboard.render.com/.
+3. Select **New > Blueprint** and connect the GitHub repository.
+4. Confirm the service uses `render.yaml`, then select **Apply**. Render builds the Docker image and starts `node server.js`.
+5. Open the Render URL on your phone. Use the Render URL, not `localhost` and not the old Vercel-only URL.
+
+The included Dockerfile installs Node, Python, `yt-dlp`, and `ffmpeg`, so video processing runs on the backend. The free service may sleep when idle and has bandwidth limits. Only download media you own or have permission to save, and add rate limiting/authentication before making the service public.
+
 ## Deploy
 
 The image editor files can be uploaded to any static hosting service such as GitHub Pages, Netlify, or Cloudflare Pages. The Media Downloader additionally requires the included Node server or an equivalent backend deployment:
