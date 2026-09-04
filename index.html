@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Pixelroomedit — private image cleanup</title>
+<title>Pixelroomedit — private image editor</title>
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" type="image/png" href="favicon.png?v=20260904.6">
 <link rel="apple-touch-icon" href="favicon.png?v=20260904.6">
@@ -22,7 +22,7 @@
   <a class="nav-brand" href="#top"><img class="nav-mark" src="favicon.png?v=20260904.6" alt="">Pixelroomedit</a>
   <div class="nav-links">
     <a href="#guide">How it works</a>
-    <a href="#privacy">Privacy</a>
+    <a href="privacy.html">Privacy</a>
     <a href="#editor">Open editor</a>
   </div>
 </nav>
@@ -30,13 +30,14 @@
 <header class="hero" id="top">
   <div class="hero-chips" aria-hidden="true">
     <span class="hero-chip">Remove objects</span>
-    <span class="hero-chip">Strip metadata</span>
-    <span class="hero-chip">Resize</span>
-    <span class="hero-chip">AI editor <em style="font-style:normal;opacity:.7;">soon</em></span>
+    <span class="hero-chip">Auto-detect text</span>
+    <span class="hero-chip">Filters and edits</span>
+    <span class="hero-chip">PNG branding</span>
+    <span class="hero-chip">Resize for social</span>
   </div>
   <p class="eyebrow">Private photo editor</p>
   <h1>Edit photos <em>without the upload</em></h1>
-  <p class="sub">Remove unwanted details, make quick adjustments, and export a clean copy — everything runs right here in your browser.</p>
+  <p class="sub">Remove unwanted details, apply filters, add branding, resize for social media, and export a clean copy — everything runs right here in your browser.</p>
   <div class="privacy-pill"><span></span> Local only, nothing leaves your device</div>
 </header>
 
@@ -56,13 +57,13 @@
   </div>
   <div class="section-choices" id="sectionChoices" aria-label="Choose an image task">
     <button class="section-choice active" data-section="remove" disabled>
-      <span class="choice-mark" aria-hidden="true">01</span><strong>Remove object or watermark</strong><span>Paint over it and fill the selection</span>
+      <span class="choice-mark" aria-hidden="true">01</span><strong>Remove watermark and edit image</strong><span>Clean up, adjust, and add your branding</span>
     </button>
     <button class="section-choice" data-section="metadata" disabled>
-      <span class="choice-mark" aria-hidden="true">02</span><strong>Remove image metadata</strong><span>Clean camera, date, and location details</span>
+      <span class="choice-mark" aria-hidden="true">02</span><strong>Clean image metadata</strong><span>Remove camera, date, and location details</span>
     </button>
     <button class="section-choice" data-section="resize" disabled>
-      <span class="choice-mark" aria-hidden="true">03</span><strong>Resize image</strong><span>Set a new pixel width and height</span>
+      <span class="choice-mark" aria-hidden="true">03</span><strong>Resize for social media</strong><span>Set a new pixel width and height</span>
     </button>
     <button class="section-choice ai-choice" data-section="ai" disabled>
       <span class="choice-mark" aria-hidden="true">04</span><strong>AI Editor <em>Coming soon</em></strong><span>Model-powered edits are being prepared</span>
@@ -77,7 +78,7 @@
     <div class="section-home" id="sectionHome">
       <p class="eyebrow">IMAGE READY</p>
       <h2>What would you like to do?</h2>
-      <p class="hint">Choose one task below. Your image stays in this browser while you work.</p>
+      <p class="hint">Choose a task below. You can clean up text, style the image, add a logo, remove metadata, or prepare social dimensions. Your image stays in this browser while you work.</p>
       <div class="section-actions"><button class="secondary small" id="changeImageBtn">Change image</button></div>
     </div>
 
@@ -157,12 +158,53 @@
     <div class="canvas-scroll" id="canvasScroll">
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="canvas"></canvas>
+        <img id="brandingOverlay" class="branding-overlay" alt="Branding overlay" draggable="false" hidden>
         <div id="cropBox">
           <div class="crop-handle nw"></div>
           <div class="crop-handle ne"></div>
           <div class="crop-handle sw"></div>
           <div class="crop-handle se"></div>
         </div>
+      </div>
+    </div>
+
+    <div class="edit-dock section-editor section-remove" id="editDock">
+      <div class="edit-tabs" role="tablist" aria-label="Photo adjustments">
+        <button class="edit-tab active" id="filtersTab" type="button" role="tab" aria-selected="true">Filters</button>
+        <button class="edit-tab" id="adjustTab" type="button" role="tab" aria-selected="false">Edit</button>
+      </div>
+      <div class="edit-panel active" id="filtersPanel" role="tabpanel">
+        <div class="filter-strip" id="filterStrip" aria-label="Filters">
+          <button class="filter-choice active" data-filter="original" type="button"><span class="filter-swatch filter-original"></span><strong>Original</strong></button>
+          <button class="filter-choice" data-filter="vivid" type="button"><span class="filter-swatch filter-vivid"></span><strong>Vivid</strong></button>
+          <button class="filter-choice" data-filter="warm" type="button"><span class="filter-swatch filter-warm"></span><strong>Warm</strong></button>
+          <button class="filter-choice" data-filter="cool" type="button"><span class="filter-swatch filter-cool"></span><strong>Cool</strong></button>
+          <button class="filter-choice" data-filter="vintage" type="button"><span class="filter-swatch filter-vintage"></span><strong>Vintage</strong></button>
+          <button class="filter-choice" data-filter="noir" type="button"><span class="filter-swatch filter-noir"></span><strong>Noir</strong></button>
+          <button class="filter-choice" data-filter="faded" type="button"><span class="filter-swatch filter-faded"></span><strong>Faded</strong></button>
+          <button class="filter-choice" data-filter="dramatic" type="button"><span class="filter-swatch filter-dramatic"></span><strong>Dramatic</strong></button>
+          <button class="filter-choice" data-filter="clarendon" type="button"><span class="filter-swatch filter-clarendon"></span><strong>Clarendon</strong></button>
+          <button class="filter-choice" data-filter="juno" type="button"><span class="filter-swatch filter-juno"></span><strong>Juno</strong></button>
+          <button class="filter-choice" data-filter="lark" type="button"><span class="filter-swatch filter-lark"></span><strong>Lark</strong></button>
+          <button class="filter-choice" data-filter="valencia" type="button"><span class="filter-swatch filter-valencia"></span><strong>Valencia</strong></button>
+          <button class="filter-choice" data-filter="nashville" type="button"><span class="filter-swatch filter-nashville"></span><strong>Nashville</strong></button>
+          <button class="filter-choice" data-filter="moon" type="button"><span class="filter-swatch filter-moon"></span><strong>Moon</strong></button>
+          <button class="filter-choice" data-filter="sepia" type="button"><span class="filter-swatch filter-sepia"></span><strong>Sepia</strong></button>
+          <button class="filter-choice" data-filter="mono" type="button"><span class="filter-swatch filter-mono"></span><strong>Mono</strong></button>
+        </div>
+      </div>
+      <div class="edit-panel" id="adjustPanel" role="tabpanel" hidden>
+        <div class="adjust-grid">
+          <label>Brightness <input type="range" data-adjust="brightness" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Contrast <input type="range" data-adjust="contrast" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Saturation <input type="range" data-adjust="saturation" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Warmth <input type="range" data-adjust="warmth" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Highlights <input type="range" data-adjust="highlights" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Shadows <input type="range" data-adjust="shadows" min="-100" max="100" value="0"><output>0</output></label>
+          <label>Fade <input type="range" data-adjust="fade" min="0" max="100" value="0"><output>0</output></label>
+          <label>Vignette <input type="range" data-adjust="vignette" min="0" max="100" value="0"><output>0</output></label>
+        </div>
+        <button class="secondary small" id="resetAdjustments" type="button">Reset edits</button>
       </div>
     </div>
 
@@ -188,6 +230,7 @@
       <div class="status" id="status">Paint over the area to remove.</div>
       <progress class="fill-progress" id="fillProgress" value="0" max="100" hidden></progress>
       <div class="remove-actions">
+        <button class="secondary" id="autoDetectBtn" type="button">Auto-detect text</button>
         <button id="fillBtn" disabled>Remove selection</button>
         <button class="secondary" id="fillCancelBtn" hidden>Cancel</button>
         <select id="downloadFormat">
@@ -209,12 +252,23 @@
       </div>
       <div class="mask-status" id="maskStatus">No area selected</div>
       <p class="hint">Paint over each watermark, then remove it. Padding adds context; feather softens AI edges.</p>
+      <div class="branding-tools">
+        <div class="branding-heading"><strong>Add PNG branding</strong><span class="hint">Drag the logo on the image. Its position is kept when you change the base image.</span></div>
+        <div class="branding-actions">
+          <button class="secondary small" id="brandingUploadBtn" type="button">Choose PNG</button>
+          <input type="file" id="brandingFileInput" accept="image/png">
+          <label class="branding-size">Size <input type="range" id="brandingSize" min="5" max="80" value="22"><span id="brandingSizeVal">22%</span></label>
+          <label class="branding-opacity">Opacity <input type="range" id="brandingOpacity" min="10" max="100" value="100"><span id="brandingOpacityVal">100%</span></label>
+          <button class="secondary small" id="brandingRemoveBtn" type="button" disabled>Remove PNG</button>
+        </div>
+        <div class="status" id="brandingStatus" role="status" aria-live="polite">No branding PNG added.</div>
+      </div>
     </div>
 
     <div class="section-tools section-metadata" id="metadataSection">
       <p class="eyebrow">METADATA CLEANUP</p>
       <h2>Export a clean copy</h2>
-      <p class="hint">The canvas export removes embedded camera, date, and location metadata.</p>
+      <p class="hint">Export a filtered, adjusted, branded image while removing embedded camera, date, and location metadata.</p>
       <label class="metadata-toggle"><input type="checkbox" id="stripMetadata" checked> Remove metadata from export</label>
       <div class="section-actions"><button id="metadataDownloadBtn">Download clean image</button></div>
       <div class="metadata-info">
@@ -226,6 +280,7 @@
     <div class="section-tools section-resize" id="resizeSection">
       <p class="eyebrow">IMAGE RESIZE</p>
       <h2>Choose the output dimensions</h2>
+      <p class="hint">Use custom dimensions for Instagram posts, portrait images, Stories, or any other platform format.</p>
       <div class="resize-grid">
         <label>Width <input type="number" id="resizeWidth" min="1" max="2200" step="1"></label>
         <label>Height <input type="number" id="resizeHeight" min="1" max="2200" step="1"></label>
@@ -263,34 +318,35 @@
   </div>
 </div>
 
-<section class="about-grid" id="guide" aria-label="About Pixelroomedit">
+<section class="about-grid" id="guide" aria-label="Pixelroomedit information">
   <h2 class="about-faq-title">Frequently asked questions</h2>
-  <article id="tools">
+  <article>
     <details>
       <summary>What can I do with Pixelroomedit?</summary>
-      <p class="faq-body">Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill handles simple backgrounds, while AI Editor handles model-based edits on selected areas.</p>
+      <p class="faq-body">Apply 16 filters, adjust brightness, contrast, saturation, warmth, highlights, shadows, fade, and vignette, remove distractions, crop, rotate, add a persistent PNG logo, compare changes, and export PNG, JPEG, or WebP files.</p>
     </details>
   </article>
-  <article id="how-it-works">
+  <article>
     <details>
       <summary>How does the editor work?</summary>
-      <p class="faq-body">Select a photo, paint over what should disappear, then choose Fill. The result is rendered in the browser and can be downloaded when it looks right.</p>
+      <p class="faq-body">Select a photo, choose a filter or Edit adjustment, then paint over what should disappear or use Auto-detect text. Review the red mask, choose Remove selection, add branding if needed, and preview the final export before downloading.</p>
     </details>
   </article>
-  <article id="privacy">
+  <article>
     <details>
       <summary>Is my photo uploaded anywhere?</summary>
-      <p class="faq-body">No. Photos and masks are processed locally in this browser and nothing is uploaded. When enabled, Remove metadata strips EXIF details such as GPS data from the export.</p>
+      <p class="faq-body">Photos, masks, filters, adjustments, and branding placement are processed locally in this browser. The OCR library and optional ONNX runtime are loaded from a CDN, but your image is not uploaded. Remove metadata can strip EXIF details such as GPS data from the export.</p>
     </details>
   </article>
 </section>
 
 <footer>
   <span>Pixelroomedit</span>
-  <span>Images stay local</span>
+  <span><a href="about.html">About</a> · <a href="terms.html">Terms</a> · <a href="privacy.html">Privacy</a> · <a class="clipgrab-link" href="https://clipgrab-mtcp.onrender.com" target="_blank" rel="noopener noreferrer">Try ClipGrab</a></span>
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="script.js?v=20260904.2"></script>
 </body>
 </html>

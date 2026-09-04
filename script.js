@@ -16,6 +16,22 @@
   const canvasScroll = document.getElementById('canvasScroll');
   const canvasWrap = document.getElementById('canvasWrap');
   const canvas = document.getElementById('canvas');
+  const brandingOverlay = document.getElementById('brandingOverlay');
+  const brandingUploadBtn = document.getElementById('brandingUploadBtn');
+  const brandingFileInput = document.getElementById('brandingFileInput');
+  const brandingSize = document.getElementById('brandingSize');
+  const brandingSizeVal = document.getElementById('brandingSizeVal');
+  const brandingOpacity = document.getElementById('brandingOpacity');
+  const brandingOpacityVal = document.getElementById('brandingOpacityVal');
+  const brandingRemoveBtn = document.getElementById('brandingRemoveBtn');
+  const brandingStatus = document.getElementById('brandingStatus');
+  const filtersTab = document.getElementById('filtersTab');
+  const adjustTab = document.getElementById('adjustTab');
+  const filtersPanel = document.getElementById('filtersPanel');
+  const adjustPanel = document.getElementById('adjustPanel');
+  const filterChoices = document.querySelectorAll('.filter-choice');
+  const adjustmentInputs = document.querySelectorAll('[data-adjust]');
+  const resetAdjustments = document.getElementById('resetAdjustments');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const cropBox = document.getElementById('cropBox');
   const cropActions = document.getElementById('cropActions');
@@ -31,6 +47,7 @@
   const fillBtn = document.getElementById('fillBtn');
   const fillCancelBtn = document.getElementById('fillCancelBtn');
   const fillProgress = document.getElementById('fillProgress');
+  const autoDetectBtn = document.getElementById('autoDetectBtn');
   const maskStatus = document.getElementById('maskStatus');
   const saveMaskBtn = document.getElementById('saveMaskBtn');
   const reuseMaskBtn = document.getElementById('reuseMaskBtn');
@@ -135,6 +152,17 @@
   let aiOperation = null;
   let fillCancelled = false;
   let savedMaskData = null;
+  let ocrWorker = null;
+  let brandingImage = null;
+  let brandingUrl = null;
+  let brandingPlacement = { x: 0.72, y: 0.72, width: 0.22, height: 0.22 };
+  let brandingDragging = false;
+  let brandingDragOffset = { x: 0, y: 0 };
+  let selectedFilter = 'original';
+  const adjustments = {
+    brightness: 0, contrast: 0, saturation: 0, warmth: 0,
+    highlights: 0, shadows: 0, fade: 0, vignette: 0
+  };
   let aiOperationId = 0;
   let exportNumber = 0;
   try{ exportNumber = Number(localStorage.getItem('pixelroomedit-download-number')) || 0; }catch(e){}
@@ -181,17 +209,32 @@
       canvas.toBlob(blob => {
         if (!blob) return;
         savedSessionFile = new File([blob], sourceFile?.name || 'image.png', { type:'image/png' });
-        writeSession({
+        const record = {
           blob,
           name: sourceFile?.name || 'image.png',
           type: blob.type || 'image/png',
           lastModified: sourceFile?.lastModified || Date.now(),
           section: activeSection,
           sourceWidth: sourceDimensions?.width || canvas.width,
-          sourceHeight: sourceDimensions?.height || canvas.height
-        }).catch(() => {});
+          sourceHeight: sourceDimensions?.height || canvas.height,
+          brandingPlacement: { ...brandingPlacement },
+          brandingOpacity: brandingOpacity.value,
+          brandingSize: brandingSize.value
+        };
+        const brandingPromise = brandingImage ? brandingImageToBlob().then(brandingBlob => { record.brandingBlob = brandingBlob; }) : Promise.resolve();
+        brandingPromise.then(() => writeSession(record).catch(() => {}));
       }, 'image/png');
     }, 120);
+  }
+
+  function brandingImageToBlob(){
+    return new Promise(resolve => {
+      const imageCanvas = document.createElement('canvas');
+      imageCanvas.width = brandingImage.width;
+      imageCanvas.height = brandingImage.height;
+      imageCanvas.getContext('2d').drawImage(brandingImage, 0, 0);
+      imageCanvas.toBlob(resolve, 'image/png');
+    });
   }
 
   function setStatus(msg){ statusEl.textContent = msg; }
@@ -240,6 +283,161 @@
     resizeWidth.value = canvas.width;
     resizeHeight.value = canvas.height;
   }
+  function getBrandingHeight(){
+    if (!brandingImage || !canvas.width || !canvas.height) return 0;
+    return brandingPlacement.width * canvas.width / canvas.height / (brandingImage.width / brandingImage.height || 1);
+  }
+  function updateBrandingOverlay(){
+    const visible = !!brandingImage && !!originalImageData;
+    brandingOverlay.hidden = !visible;
+    brandingRemoveBtn.disabled = !brandingImage;
+    if (!visible) return;
+    brandingPlacement.height = Math.min(1, getBrandingHeight());
+    brandingOverlay.src = brandingUrl;
+    brandingOverlay.style.left = (brandingPlacement.x * 100) + '%';
+    brandingOverlay.style.top = (brandingPlacement.y * 100) + '%';
+    brandingOverlay.style.width = (brandingPlacement.width * 100) + '%';
+    brandingOverlay.style.opacity = Number(brandingOpacity.value) / 100;
+    brandingStatus.textContent = 'Branding PNG ready. Drag it to place it on the image.';
+  }
+  function setBrandingImage(file){
+    if (!file || file.type !== 'image/png'){
+      brandingStatus.textContent = 'Choose a PNG file with a transparent background.';
+      return;
+    }
+    const image = new Image();
+    const url = URL.createObjectURL(file);
+    image.onload = () => {
+      if (brandingUrl) URL.revokeObjectURL(brandingUrl);
+      brandingImage = image;
+      brandingUrl = url;
+      brandingPlacement.width = Number(brandingSize.value) / 100;
+      updateBrandingOverlay();
+      saveSession();
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); brandingStatus.textContent = 'Could not read that PNG file.'; };
+    image.src = url;
+  }
+  function clearBranding(){
+    brandingImage = null;
+    if (brandingUrl) URL.revokeObjectURL(brandingUrl);
+    brandingUrl = null;
+    brandingOverlay.removeAttribute('src');
+    updateBrandingOverlay();
+    brandingStatus.textContent = 'No branding PNG added.';
+    saveSession();
+  }
+  const filterPresets = {
+    original: {},
+    vivid: { saturation: 28, contrast: 10 },
+    warm: { warmth: 20, saturation: 8, brightness: 4 },
+    cool: { warmth: -20, contrast: 6 },
+    vintage: { warmth: 16, contrast: -8, saturation: -12, fade: 12 },
+    noir: { saturation: -100, contrast: 22, brightness: 4 },
+    faded: { saturation: -18, contrast: -12, fade: 28 },
+    dramatic: { contrast: 30, saturation: 14, shadows: -12, highlights: -8 },
+    clarendon: { contrast: 18, saturation: 22, brightness: 5 },
+    juno: { contrast: 12, saturation: 30, warmth: 10, brightness: 3 },
+    lark: { brightness: 8, saturation: 18, contrast: -5 },
+    valencia: { warmth: 14, brightness: 5, contrast: -6, fade: 6 },
+    nashville: { warmth: 24, saturation: -8, contrast: -10, fade: 16 },
+    moon: { saturation: -100, contrast: -8, brightness: 10, fade: 8 },
+    sepia: { saturation: -70, warmth: 28, contrast: -5 },
+    mono: { saturation: -100, contrast: 8 }
+  };
+  function clampColor(value){ return Math.max(0, Math.min(255, value)); }
+  function getAdjustedImageData(){
+    const output = new ImageData(new Uint8ClampedArray(originalImageData.data), originalImageData.width, originalImageData.height);
+    const preset = filterPresets[selectedFilter] || {};
+    const width = output.width, height = output.height;
+    for (let y=0; y<height; y++){
+      for (let x=0; x<width; x++){
+        const index = (y * width + x) * 4;
+        const sourceR = output.data[index], sourceG = output.data[index+1], sourceB = output.data[index+2];
+        const brightness = (adjustments.brightness + (preset.brightness || 0)) * 2.55;
+        const contrast = 1 + (adjustments.contrast + (preset.contrast || 0)) / 100;
+        const saturation = 1 + (adjustments.saturation + (preset.saturation || 0)) / 100;
+        const warmth = adjustments.warmth + (preset.warmth || 0);
+        const highlights = (adjustments.highlights + (preset.highlights || 0)) / 100;
+        const shadows = (adjustments.shadows + (preset.shadows || 0)) / 100;
+        let r = (sourceR - 128) * contrast + 128 + brightness + warmth;
+        let g = (sourceG - 128) * contrast + 128 + brightness;
+        let b = (sourceB - 128) * contrast + 128 + brightness - warmth;
+        const luminance = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+        const tone = luminance > 0.5 ? highlights * (luminance - 0.5) * 2 : shadows * (0.5 - luminance) * 2;
+        r += tone * 255; g += tone * 255; b += tone * 255;
+        const gray = r * 0.299 + g * 0.587 + b * 0.114;
+        r = gray + (r - gray) * saturation;
+        g = gray + (g - gray) * saturation;
+        b = gray + (b - gray) * saturation;
+        const fade = (adjustments.fade + (preset.fade || 0)) / 100;
+        r = r * (1 - fade) + 128 * fade;
+        g = g * (1 - fade) + 128 * fade;
+        b = b * (1 - fade) + 128 * fade;
+        const distance = Math.hypot(x / width - 0.5, y / height - 0.5) / 0.707;
+        const vignette = Math.max(0, Math.min(1, adjustments.vignette / 100 * distance * distance));
+        output.data[index] = clampColor(r * (1 - vignette));
+        output.data[index+1] = clampColor(g * (1 - vignette));
+        output.data[index+2] = clampColor(b * (1 - vignette));
+      }
+    }
+    return output;
+  }
+  function renderEditedImage(){
+    if (!originalImageData) return;
+    ctx.putImageData(getAdjustedImageData(), 0, 0);
+    if (hasMask){
+      ctx.save();
+      ctx.globalAlpha = Number(maskOpacityInput.value) / 100;
+      ctx.drawImage(maskCanvas, 0, 0);
+      ctx.restore();
+    }
+  }
+  function updateFilterThumbnails(){
+    if (!originalImageData) return;
+    const thumbnail = document.createElement('canvas');
+    thumbnail.width = 96;
+    thumbnail.height = Math.max(1, Math.round(96 * originalImageData.height / originalImageData.width));
+    thumbnail.getContext('2d').drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height);
+    const url = `url("${thumbnail.toDataURL('image/jpeg', 0.82)}")`;
+    filterChoices.forEach(choice => { choice.querySelector('.filter-swatch').style.backgroundImage = url; });
+  }
+  function resetEditSettings(){
+    selectedFilter = 'original';
+    Object.keys(adjustments).forEach(key => { adjustments[key] = 0; });
+    filterChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.filter === selectedFilter));
+    adjustmentInputs.forEach(input => { input.value = 0; input.nextElementSibling.value = '0'; });
+    renderEditedImage();
+  }
+  filtersTab.addEventListener('click', () => {
+    filtersTab.classList.add('active');
+    adjustTab.classList.remove('active');
+    filtersTab.setAttribute('aria-selected', 'true');
+    adjustTab.setAttribute('aria-selected', 'false');
+    filtersPanel.hidden = false;
+    adjustPanel.hidden = true;
+  });
+  adjustTab.addEventListener('click', () => {
+    adjustTab.classList.add('active');
+    filtersTab.classList.remove('active');
+    adjustTab.setAttribute('aria-selected', 'true');
+    filtersTab.setAttribute('aria-selected', 'false');
+    adjustPanel.hidden = false;
+    filtersPanel.hidden = true;
+  });
+  filterChoices.forEach(choice => choice.addEventListener('click', () => {
+    selectedFilter = choice.dataset.filter;
+    filterChoices.forEach(item => item.classList.toggle('active', item === choice));
+    renderEditedImage();
+    saveSession();
+  }));
+  adjustmentInputs.forEach(input => input.addEventListener('input', () => {
+    adjustments[input.dataset.adjust] = Number(input.value);
+    input.nextElementSibling.value = input.value;
+    renderEditedImage();
+    saveSession();
+  }));
+  resetAdjustments.addEventListener('click', resetEditSettings);
   function setSection(name){
     activeSection = name;
     drawing = false;
@@ -300,6 +498,9 @@
       ctx.clearRect(0,0,w,h);
       ctx.drawImage(img,0,0,w,h);
       originalImageData = ctx.getImageData(0,0,w,h);
+      resetEditSettings();
+      updateFilterThumbnails();
+      updateBrandingOverlay();
       initialImageData = ctx.getImageData(0,0,w,h);
       maskCtx.clearRect(0,0,w,h);
       maskHistory = [];
@@ -330,7 +531,7 @@
       setStatus('Paint over the area to remove, then choose Fill.');
       URL.revokeObjectURL(url);
 
-      readMetadata(file, w, h);
+      readMetadata(file, sourceDimensions?.width || img.width, sourceDimensions?.height || img.height);
       saveSession();
       updateAiModelInfo();
     };
@@ -413,6 +614,45 @@
     fileInput.value = '';
     fileInput.click();
   });
+
+  brandingUploadBtn.addEventListener('click', () => brandingFileInput.click());
+  brandingFileInput.addEventListener('change', e => {
+    setBrandingImage(e.target.files[0]);
+    brandingFileInput.value = '';
+  });
+  brandingSize.addEventListener('input', () => {
+    brandingSizeVal.textContent = brandingSize.value + '%';
+    if (!brandingImage) return;
+    brandingPlacement.width = Number(brandingSize.value) / 100;
+    updateBrandingOverlay();
+    saveSession();
+  });
+  brandingOpacity.addEventListener('input', () => {
+    brandingOpacityVal.textContent = brandingOpacity.value + '%';
+    updateBrandingOverlay();
+    saveSession();
+  });
+  brandingRemoveBtn.addEventListener('click', clearBranding);
+  brandingOverlay.addEventListener('pointerdown', e => {
+    if (!brandingImage) return;
+    e.preventDefault();
+    brandingDragging = true;
+    const rect = canvas.getBoundingClientRect();
+    brandingDragOffset = {
+      x: (e.clientX - rect.left) / rect.width - brandingPlacement.x,
+      y: (e.clientY - rect.top) / rect.height - brandingPlacement.y
+    };
+    brandingOverlay.setPointerCapture?.(e.pointerId);
+  });
+  brandingOverlay.addEventListener('pointermove', e => {
+    if (!brandingDragging) return;
+    const rect = canvas.getBoundingClientRect();
+    brandingPlacement.x = Math.min(1 - brandingPlacement.width, Math.max(0, (e.clientX - rect.left) / rect.width - brandingDragOffset.x));
+    brandingPlacement.y = Math.min(1 - brandingPlacement.height, Math.max(0, (e.clientY - rect.top) / rect.height - brandingDragOffset.y));
+    updateBrandingOverlay();
+  });
+  brandingOverlay.addEventListener('pointerup', () => { brandingDragging = false; saveSession(); });
+  brandingOverlay.addEventListener('pointercancel', () => { brandingDragging = false; });
 
   sectionBack.addEventListener('click', () => setSection('home'));
 
@@ -550,11 +790,7 @@
 
   function redrawWithMask(){
     if (!originalImageData) return;
-    ctx.putImageData(originalImageData,0,0);
-    ctx.save();
-    ctx.globalAlpha = Number(maskOpacityInput.value) / 100;
-    ctx.drawImage(maskCanvas,0,0);
-    ctx.restore();
+    renderEditedImage();
   }
 
   function maskHasContent(){
@@ -574,6 +810,54 @@
     document.getElementById('clearMaskBtn').disabled = !hasMask;
     updateAiActionState();
   }
+
+  async function autoDetectText(){
+    if (!originalImageData || !window.Tesseract){
+      setStatus('Text detection is unavailable. Check your connection and try again.');
+      return;
+    }
+    autoDetectBtn.disabled = true;
+    autoDetectBtn.textContent = 'Scanning…';
+    try{
+      const scan = document.createElement('canvas');
+      const maxSide = 1600;
+      const scale = Math.min(1, maxSide / Math.max(canvas.width, canvas.height));
+      scan.width = Math.max(1, Math.round(canvas.width * scale));
+      scan.height = Math.max(1, Math.round(canvas.height * scale));
+      const source = document.createElement('canvas');
+      source.width = canvas.width; source.height = canvas.height;
+      source.getContext('2d').putImageData(getAdjustedImageData(), 0, 0);
+      scan.getContext('2d').drawImage(source, 0, 0, scan.width, scan.height);
+      if (!ocrWorker){
+        ocrWorker = await Tesseract.createWorker('eng', 1, { logger: message => {
+          if (message.status === 'recognizing text') setStatus('Scanning text… ' + Math.round((message.progress || 0) * 100) + '%');
+        }});
+      }
+      const result = await ocrWorker.recognize(scan);
+      const words = (result.data.words || []).filter(word => String(word.text || '').trim() && word.confidence >= 35);
+      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      maskHistory = [];
+      const padding = Math.max(4, Math.round(parseInt(maskPadInput.value, 10) / 2));
+      maskCtx.fillStyle = 'rgba(255,60,60,0.58)';
+      words.forEach(word => {
+        const left = Math.max(0, Math.floor(word.bbox.x0 / scale) - padding);
+        const top = Math.max(0, Math.floor(word.bbox.y0 / scale) - padding);
+        const right = Math.min(canvas.width, Math.ceil(word.bbox.x1 / scale) + padding);
+        const bottom = Math.min(canvas.height, Math.ceil(word.bbox.y1 / scale) + padding);
+        maskCtx.fillRect(left, top, right - left, bottom - top);
+      });
+      updateMaskUi();
+      redrawWithMask();
+      setStatus(words.length ? `Found ${words.length} text area${words.length === 1 ? '' : 's'}. Review the mask, then choose Remove selection.` : 'No readable text found. Paint the area manually instead.');
+    }catch(error){
+      setStatus('Text detection failed. Paint the area manually instead.');
+      console.error('Text detection failed', error);
+    }finally{
+      autoDetectBtn.disabled = false;
+      autoDetectBtn.textContent = 'Auto-detect text';
+    }
+  }
+  autoDetectBtn.addEventListener('click', autoDetectText);
 
   let lastX = 0, lastY = 0;
   let lastPanX = 0, lastPanY = 0;
@@ -699,6 +983,7 @@
     maskCtx.clearRect(0,0,snap.w,snap.h);
     maskHistory = []; hasMask = false;
     fillBtn.disabled = true; undoBtn.disabled = true;
+    renderEditedImage();
     applyZoom();
     if (!actionHistory.length) undoActionBtn.disabled = true;
     compareBtn.disabled = !compareSnapshot || compareSnapshot.w !== canvas.width || compareSnapshot.h !== canvas.height;
@@ -734,10 +1019,12 @@
     canvas.width = h; canvas.height = w;
     ctx.drawImage(tmp, 0, 0);
     originalImageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    updateBrandingOverlay();
     if (compareSnapshot){ compareSnapshot = { w: canvas.width, h: canvas.height, data: rotateImageData(compareSnapshot.data, dir) }; }
     maskCanvas.width = canvas.width; maskCanvas.height = canvas.height;
     maskCtx.clearRect(0,0,canvas.width,canvas.height);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
+    renderEditedImage();
     applyZoom();
     saveSession();
     setStatus('Rotated. (Mask cleared.)');
@@ -866,10 +1153,12 @@
     canvas.width = sw; canvas.height = sh;
     ctx.drawImage(tmp, 0, 0);
     originalImageData = ctx.getImageData(0,0,sw,sh);
+    updateBrandingOverlay();
     if (compareSnapshot){ compareSnapshot = { w: sw, h: sh, data: cropImageData(compareSnapshot.data, sx, sy, sw, sh) }; }
     maskCanvas.width = sw; maskCanvas.height = sh;
     maskCtx.clearRect(0,0,sw,sh);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
+    renderEditedImage();
     zoom = 1; applyZoom(); updateZoomLabel();
     setTool('brush');
     saveSession();
@@ -1463,6 +1752,7 @@
       canvas.height = nativeResult.height;
       ctx.drawImage(nativeResult, 0, 0);
       originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      renderEditedImage();
       compareSnapshot = null;
       applyZoom();
       updateZoomLabel();
@@ -1608,7 +1898,6 @@
       if (fillCancelled) setStatus('Fill canceled. Your selection is still available.');
       return;
     }
-    ctx.putImageData(result, 0, 0);
     originalImageData = result;
     maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     maskHistory = []; hasMask = false;
@@ -1617,6 +1906,7 @@
     fillProgress.value = 100;
     fillProgress.hidden = true;
     updateMaskUi();
+    renderEditedImage();
     saveSession();
     setStatus('Selection removed. Inspect the result, then download.');
   });
@@ -1628,7 +1918,7 @@
     const cleanCanvas = document.createElement('canvas');
     cleanCanvas.width = canvas.width;
     cleanCanvas.height = canvas.height;
-    cleanCanvas.getContext('2d').putImageData(originalImageData, 0, 0);
+    cleanCanvas.getContext('2d').putImageData(getAdjustedImageData(), 0, 0);
     return cleanCanvas;
   }
   function getExportDimensions(){
@@ -1648,6 +1938,13 @@
     outputContext.imageSmoothingEnabled = true;
     outputContext.imageSmoothingQuality = 'high';
     outputContext.drawImage(createCleanCanvas(), 0, 0, canvas.width, canvas.height, 0, 0, output.width, output.height);
+    if (brandingImage){
+      outputContext.globalAlpha = Number(brandingOpacity.value) / 100;
+      const width = brandingPlacement.width * output.width;
+      const height = width / (brandingImage.width / brandingImage.height || 1);
+      outputContext.drawImage(brandingImage, brandingPlacement.x * output.width, brandingPlacement.y * output.height, width, height);
+      outputContext.globalAlpha = 1;
+    }
     return output;
   }
   function updateExportControls(){
@@ -1714,11 +2011,13 @@
     canvas.width = width; canvas.height = height;
     ctx.drawImage(source, 0, 0, width, height);
     originalImageData = ctx.getImageData(0, 0, width, height);
+    updateBrandingOverlay();
     maskCanvas.width = width; maskCanvas.height = height;
     maskCtx.clearRect(0, 0, width, height);
     maskHistory = []; hasMask = false; fillBtn.disabled = true; undoBtn.disabled = true;
     compareSnapshot = null; compareBtn.disabled = true;
     updateResizeFields();
+    renderEditedImage();
     applyZoom();
     saveSession();
     setStatus('Image resized to ' + width + ' × ' + height + ' pixels.');
@@ -1773,8 +2072,8 @@
   // ============================================================
   // Metadata (EXIF) viewer
   // ============================================================
-  const EXIF_IFD0 = { 271:'Make', 272:'Model', 274:'Orientation', 305:'Software', 306:'DateTime', 315:'Artist', 33432:'Copyright', 34665:'ExifIFDPointer', 34853:'GPSInfoIFDPointer' };
-  const EXIF_SUB  = { 33434:'ExposureTime', 33437:'FNumber', 34855:'ISO', 36867:'DateTimeOriginal', 37386:'FocalLength', 42036:'LensModel' };
+  const EXIF_IFD0 = { 271:'Make', 272:'Model', 274:'Orientation', 282:'XResolution', 283:'YResolution', 296:'ResolutionUnit', 305:'Software', 306:'DateTime', 315:'Artist', 33432:'Copyright', 34665:'ExifIFDPointer', 34853:'GPSInfoIFDPointer' };
+  const EXIF_SUB  = { 33434:'ExposureTime', 33437:'FNumber', 34850:'ExposureProgram', 34855:'ISO', 36867:'DateTimeOriginal', 36868:'DateTimeDigitized', 37377:'ShutterSpeedValue', 37378:'ApertureValue', 37379:'BrightnessValue', 37380:'ExposureBiasValue', 37381:'MaxApertureValue', 37382:'SubjectDistance', 37383:'MeteringMode', 37385:'Flash', 37386:'FocalLength', 40961:'ColorSpace', 40962:'PixelXDimension', 40963:'PixelYDimension', 41495:'SensingMethod', 41987:'WhiteBalance', 41988:'DigitalZoomRatio', 41989:'FocalLengthIn35mmFilm', 41990:'SceneCaptureType', 42036:'LensModel' };
   const EXIF_GPS  = { 1:'GPSLatitudeRef', 2:'GPSLatitude', 3:'GPSLongitudeRef', 4:'GPSLongitude' };
 
   function getStr(view, offset, len){
@@ -1858,6 +2157,9 @@
     rows.push(['File size', (file.size/1024).toFixed(1) + ' KB']);
     rows.push(['Type', file.type || 'unknown']);
     rows.push(['Pixel dimensions', w + ' × ' + h]);
+    rows.push(['Aspect ratio', formatAspectRatio(w, h)]);
+    rows.push(['Megapixels', (w * h / 1000000).toFixed(2) + ' MP']);
+    rows.push(['Transparency', hasTransparentPixels() ? 'Yes' : 'No']);
     if (file.lastModified) rows.push(['File modified', new Date(file.lastModified).toLocaleString()]);
 
     const reader = new FileReader();
@@ -1874,6 +2176,23 @@
     };
     reader.onerror = function(){ renderMetaRows(rows, false); };
     reader.readAsArrayBuffer(file.slice(0, 262144)); // EXIF lives near the start of the file
+  }
+
+  function formatAspectRatio(width, height){
+    if (!width || !height) return 'Unknown';
+    const divisor = gcd(width, height);
+    return (width / divisor) + ':' + (height / divisor);
+  }
+  function gcd(a, b){
+    while (b){ const remainder = a % b; a = b; b = remainder; }
+    return a || 1;
+  }
+  function hasTransparentPixels(){
+    if (!originalImageData) return false;
+    for (let i=3; i<originalImageData.data.length; i+=4){
+      if (originalImageData.data[i] < 255) return true;
+    }
+    return false;
   }
 
   function renderMetaRows(rows, hadExif){
@@ -1904,6 +2223,10 @@
       const restoredDimensions = saved.sourceWidth && saved.sourceHeight
         ? { width:saved.sourceWidth, height:saved.sourceHeight }
         : null;
+      brandingPlacement = saved.brandingPlacement || brandingPlacement;
+      if (saved.brandingSize) brandingSize.value = saved.brandingSize;
+      if (saved.brandingOpacity) brandingOpacity.value = saved.brandingOpacity;
+      if (saved.brandingBlob) setBrandingImage(new File([saved.brandingBlob], 'branding.png', { type:'image/png' }));
       loadImageFile(file, ['remove','metadata','resize','ai'].includes(saved.section) ? saved.section : 'home', restoredDimensions);
     }catch(e){ /* no previous image session */ }
   })();

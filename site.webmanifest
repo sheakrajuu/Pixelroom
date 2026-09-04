@@ -1,7 +1,7 @@
 {
   "name": "Pixelroomedit",
   "short_name": "Pixelroomedit",
-  "description": "Private browser-based photo editing.",
+  "description": "Private browser-based photo editor with filters, adjustments, text detection, branding, metadata cleanup, and social resizing.",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
