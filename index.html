@@ -125,7 +125,7 @@
       </div>
     </div>
 
-    <div class="toolbar section-editor" id="toolbar">
+    <div class="toolbar section-editor editor-mode-edit" id="toolbar">
       <button class="tool-btn active" id="toolBrush" data-tool="brush" title="Brush">
         <svg viewBox="0 0 24 24"><circle cx="8" cy="16" r="3.4"></circle><line x1="10.4" y1="13.6" x2="18" y2="6"></line><path d="M18 6 c1.4-1.4 3-1.4 3.6 0 c0.6 1.6-1 3-1 3l-2.6 2.6"></path></svg>
         <span class="label">Brush</span>
@@ -168,7 +168,13 @@
       </div>
     </div>
 
-    <div class="edit-dock section-editor section-remove" id="editDock">
+    <div class="editor-sections section-remove" id="editorSections" role="tablist" aria-label="Editor sections">
+      <button class="editor-section active" data-editor-mode="edit" type="button" role="tab" aria-selected="true">Edit</button>
+      <button class="editor-section" data-editor-mode="remove" type="button" role="tab" aria-selected="false">Remove watermark</button>
+      <button class="editor-section" data-editor-mode="branding" type="button" role="tab" aria-selected="false">Add overlay</button>
+    </div>
+
+    <div class="edit-dock section-editor section-remove editor-mode-edit" id="editDock">
       <div class="edit-tabs" role="tablist" aria-label="Photo adjustments">
         <button class="edit-tab active" id="filtersTab" type="button" role="tab" aria-selected="true">Filters</button>
         <button class="edit-tab" id="adjustTab" type="button" role="tab" aria-selected="false">Edit</button>
@@ -192,6 +198,7 @@
           <button class="filter-choice" data-filter="sepia" type="button"><span class="filter-swatch filter-sepia"></span><strong>Sepia</strong></button>
           <button class="filter-choice" data-filter="mono" type="button"><span class="filter-swatch filter-mono"></span><strong>Mono</strong></button>
         </div>
+        <label class="filter-intensity">Filter strength <input type="range" id="filterIntensity" min="0" max="100" value="100"><output id="filterIntensityVal">100%</output></label>
       </div>
       <div class="edit-panel" id="adjustPanel" role="tabpanel" hidden>
         <div class="adjust-grid">
@@ -208,12 +215,12 @@
       </div>
     </div>
 
-    <div id="cropActions" class="controls section-editor" style="display:none;">
+    <div id="cropActions" class="controls section-editor editor-mode-edit" style="display:none;">
       <button id="cropApply">Apply crop</button>
       <button class="secondary" id="cropCancel">Cancel</button>
     </div>
 
-    <div class="controls section-editor" id="brushControls">
+    <div class="controls section-editor editor-mode-remove" id="brushControls">
       <div class="brush-control">Brush <input type="range" id="brushSize" min="4" max="90" value="26"></div>
       <div class="brush-control">Padding <input type="range" id="maskPad" min="0" max="60" value="18"></div>
       <div class="brush-control">Mask <input type="range" id="maskOpacity" min="20" max="100" value="58"><span id="maskOpacityVal">58%</span></div>
@@ -226,7 +233,7 @@
       <button class="secondary small" id="clearBtn">New image</button>
     </div>
 
-    <div class="row section-remove">
+    <div class="row section-remove editor-mode-remove">
       <div class="status" id="status">Paint over the area to remove.</div>
       <progress class="fill-progress" id="fillProgress" value="0" max="100" hidden></progress>
       <div class="remove-actions">
@@ -242,27 +249,28 @@
       </div>
     </div>
 
-    <div class="panel-tabs section-editor section-remove">
+    <div class="panel-tabs section-editor section-remove editor-mode-remove">
       <button class="panel-tab active" data-panel="fillPanel">Fill settings</button>
     </div>
 
-    <div class="panel active section-editor" id="fillPanel">
+    <div class="panel active section-editor section-remove editor-mode-remove" id="fillPanel">
       <div class="field-row">
         <div class="brush-control">Edge feather <input type="range" id="featherRange" min="0" max="30" value="10"><span id="featherVal">10px</span></div>
       </div>
       <div class="mask-status" id="maskStatus">No area selected</div>
       <p class="hint">Paint over each watermark, then remove it. Padding adds context; feather softens AI edges.</p>
-      <div class="branding-tools">
-        <div class="branding-heading"><strong>Add PNG branding</strong><span class="hint">Drag the logo on the image. Its position is kept when you change the base image.</span></div>
-        <div class="branding-actions">
-          <button class="secondary small" id="brandingUploadBtn" type="button">Choose PNG</button>
-          <input type="file" id="brandingFileInput" accept="image/png">
-          <label class="branding-size">Size <input type="range" id="brandingSize" min="5" max="80" value="22"><span id="brandingSizeVal">22%</span></label>
-          <label class="branding-opacity">Opacity <input type="range" id="brandingOpacity" min="10" max="100" value="100"><span id="brandingOpacityVal">100%</span></label>
-          <button class="secondary small" id="brandingRemoveBtn" type="button" disabled>Remove PNG</button>
-        </div>
-        <div class="status" id="brandingStatus" role="status" aria-live="polite">No branding PNG added.</div>
+    </div>
+
+    <div class="branding-panel section-remove editor-mode-branding" id="brandingPanel">
+      <div class="branding-heading"><strong>Add overlay</strong><span class="hint">Drag a PNG logo on the image. Its position is kept when you change the base image.</span></div>
+      <div class="branding-actions">
+        <button class="secondary small" id="brandingUploadBtn" type="button">Choose PNG</button>
+        <input type="file" id="brandingFileInput" accept="image/png">
+        <label class="branding-size">Size <input type="range" id="brandingSize" min="5" max="80" value="22"><span id="brandingSizeVal">22%</span></label>
+        <label class="branding-opacity">Opacity <input type="range" id="brandingOpacity" min="10" max="100" value="100"><span id="brandingOpacityVal">100%</span></label>
+        <button class="secondary small" id="brandingRemoveBtn" type="button" disabled>Remove PNG</button>
       </div>
+      <div class="status" id="brandingStatus" role="status" aria-live="polite">No branding PNG added.</div>
     </div>
 
     <div class="section-tools section-metadata" id="metadataSection">

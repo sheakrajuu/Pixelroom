@@ -25,11 +25,15 @@
   const brandingOpacityVal = document.getElementById('brandingOpacityVal');
   const brandingRemoveBtn = document.getElementById('brandingRemoveBtn');
   const brandingStatus = document.getElementById('brandingStatus');
+  const editorSections = document.querySelectorAll('.editor-section');
+  const editorModeSections = document.getElementById('editorSections');
   const filtersTab = document.getElementById('filtersTab');
   const adjustTab = document.getElementById('adjustTab');
   const filtersPanel = document.getElementById('filtersPanel');
   const adjustPanel = document.getElementById('adjustPanel');
   const filterChoices = document.querySelectorAll('.filter-choice');
+  const filterIntensity = document.getElementById('filterIntensity');
+  const filterIntensityVal = document.getElementById('filterIntensityVal');
   const adjustmentInputs = document.querySelectorAll('[data-adjust]');
   const resetAdjustments = document.getElementById('resetAdjustments');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -159,6 +163,8 @@
   let brandingDragging = false;
   let brandingDragOffset = { x: 0, y: 0 };
   let selectedFilter = 'original';
+  let filterStrength = 1;
+  let editorMode = 'edit';
   const adjustments = {
     brightness: 0, contrast: 0, saturation: 0, warmth: 0,
     highlights: 0, shadows: 0, fade: 0, vignette: 0
@@ -354,12 +360,12 @@
       for (let x=0; x<width; x++){
         const index = (y * width + x) * 4;
         const sourceR = output.data[index], sourceG = output.data[index+1], sourceB = output.data[index+2];
-        const brightness = (adjustments.brightness + (preset.brightness || 0)) * 2.55;
-        const contrast = 1 + (adjustments.contrast + (preset.contrast || 0)) / 100;
-        const saturation = 1 + (adjustments.saturation + (preset.saturation || 0)) / 100;
-        const warmth = adjustments.warmth + (preset.warmth || 0);
-        const highlights = (adjustments.highlights + (preset.highlights || 0)) / 100;
-        const shadows = (adjustments.shadows + (preset.shadows || 0)) / 100;
+        const brightness = (adjustments.brightness + (preset.brightness || 0) * filterStrength) * 2.55;
+        const contrast = 1 + (adjustments.contrast + (preset.contrast || 0) * filterStrength) / 100;
+        const saturation = 1 + (adjustments.saturation + (preset.saturation || 0) * filterStrength) / 100;
+        const warmth = adjustments.warmth + (preset.warmth || 0) * filterStrength;
+        const highlights = (adjustments.highlights + (preset.highlights || 0) * filterStrength) / 100;
+        const shadows = (adjustments.shadows + (preset.shadows || 0) * filterStrength) / 100;
         let r = (sourceR - 128) * contrast + 128 + brightness + warmth;
         let g = (sourceG - 128) * contrast + 128 + brightness;
         let b = (sourceB - 128) * contrast + 128 + brightness - warmth;
@@ -370,7 +376,7 @@
         r = gray + (r - gray) * saturation;
         g = gray + (g - gray) * saturation;
         b = gray + (b - gray) * saturation;
-        const fade = (adjustments.fade + (preset.fade || 0)) / 100;
+        const fade = (adjustments.fade + (preset.fade || 0) * filterStrength) / 100;
         r = r * (1 - fade) + 128 * fade;
         g = g * (1 - fade) + 128 * fade;
         b = b * (1 - fade) + 128 * fade;
@@ -404,9 +410,12 @@
   }
   function resetEditSettings(){
     selectedFilter = 'original';
+    filterStrength = 1;
     Object.keys(adjustments).forEach(key => { adjustments[key] = 0; });
     filterChoices.forEach(choice => choice.classList.toggle('active', choice.dataset.filter === selectedFilter));
-    adjustmentInputs.forEach(input => { input.value = 0; input.nextElementSibling.value = '0'; });
+    filterIntensity.value = 100;
+    filterIntensityVal.textContent = '100%';
+    adjustmentInputs.forEach(input => { input.value = 0; input.nextElementSibling.textContent = '0'; });
     renderEditedImage();
   }
   filtersTab.addEventListener('click', () => {
@@ -431,13 +440,33 @@
     renderEditedImage();
     saveSession();
   }));
+  filterIntensity.addEventListener('input', () => {
+    filterStrength = Number(filterIntensity.value) / 100;
+    filterIntensityVal.textContent = filterIntensity.value + '%';
+    renderEditedImage();
+    saveSession();
+  });
   adjustmentInputs.forEach(input => input.addEventListener('input', () => {
     adjustments[input.dataset.adjust] = Number(input.value);
-    input.nextElementSibling.value = input.value;
+    input.nextElementSibling.textContent = input.value;
     renderEditedImage();
     saveSession();
   }));
   resetAdjustments.addEventListener('click', resetEditSettings);
+  function setEditorMode(mode){
+    editorMode = mode;
+    editorSections.forEach(button => {
+      const active = button.dataset.editorMode === mode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    document.querySelectorAll('.editor-mode-edit').forEach(element => { element.hidden = mode !== 'edit'; });
+    document.querySelectorAll('.editor-mode-remove').forEach(element => { element.hidden = mode !== 'remove'; });
+    document.querySelectorAll('.editor-mode-branding').forEach(element => { element.hidden = mode !== 'branding'; });
+    brandingOverlay.style.pointerEvents = mode === 'branding' ? 'auto' : 'none';
+    if (mode !== 'remove' && cropping) setTool('brush');
+  }
+  editorSections.forEach(button => button.addEventListener('click', () => setEditorMode(button.dataset.editorMode)));
   function setSection(name){
     activeSection = name;
     drawing = false;
@@ -451,11 +480,13 @@
     sectionChoices.forEach(choice => { choice.parentElement.hidden = !originalImageData; });
     sectionHome.hidden = name !== 'home';
     sectionBack.hidden = name === 'home';
+    editorModeSections.hidden = name !== 'remove';
     sectionEditor.forEach(element => { element.hidden = name !== 'remove' && name !== 'ai'; });
     sectionRemove.forEach(element => { element.hidden = name !== 'remove'; });
     aiEditorSection.hidden = name !== 'ai';
     metadataSection.hidden = name !== 'metadata';
     resizeSection.hidden = name !== 'resize';
+    if (name === 'remove') setEditorMode(editorMode);
     if (name === 'resize') updateResizeFields();
     saveSession();
   }
