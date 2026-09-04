@@ -7,38 +7,46 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Pixelroomedit — private image cleanup</title>
-<meta name="theme-color" content="#111417">
-<link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260902.4">
-<link rel="apple-touch-icon" href="favicon.svg?v=20260902.2">
-<link rel="manifest" href="site.webmanifest?v=20260902.1">
-<link rel="stylesheet" href="styles.css?v=20260903.7">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" type="image/png" href="favicon.png?v=20260904.6">
+<link rel="apple-touch-icon" href="favicon.png?v=20260904.6">
+<link rel="manifest" href="site.webmanifest?v=20260904.2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=20260904.2">
 </head>
 <body>
 
 <nav class="site-nav" aria-label="Main navigation">
-  <a class="nav-brand" href="#top"><img class="nav-mark" src="favicon.svg?v=20260902.4" alt="">Pixelroomedit</a>
+  <a class="nav-brand" href="#top"><img class="nav-mark" src="favicon.png?v=20260904.6" alt="">Pixelroomedit</a>
   <div class="nav-links">
-    <a href="#editor">Editor</a>
     <a href="#guide">How it works</a>
     <a href="#privacy">Privacy</a>
+    <a href="#editor">Open editor</a>
   </div>
 </nav>
 
 <header class="hero" id="top">
-  <div class="brand-mark"><img src="favicon.svg?v=20260902.4" alt="Pixelroomedit logo"></div>
-  <div>
-    <p class="eyebrow">PRIVATE PHOTO EDITOR</p>
-    <h1>Edit photos without the upload.</h1>
-    <p class="sub">Remove unwanted details, make quick adjustments, and export a clean copy from your browser.</p>
+  <div class="hero-chips" aria-hidden="true">
+    <span class="hero-chip">Remove objects</span>
+    <span class="hero-chip">Strip metadata</span>
+    <span class="hero-chip">Resize</span>
+    <span class="hero-chip">AI editor <em style="font-style:normal;opacity:.7;">soon</em></span>
   </div>
-  <div class="privacy-pill"><span></span> Local only</div>
+  <p class="eyebrow">Private photo editor</p>
+  <h1>Edit photos <em>without the upload</em></h1>
+  <p class="sub">Remove unwanted details, make quick adjustments, and export a clean copy — everything runs right here in your browser.</p>
+  <div class="privacy-pill"><span></span> Local only, nothing leaves your device</div>
 </header>
 
 <main class="card" id="editor">
   <div class="dropzone" id="dropzone">
     <div class="upload-icon" aria-hidden="true">↑</div>
-    <div id="uploadTitle">Select an image to begin</div>
-    <span id="uploadHint">Drag it here or click to browse</span>
+    <div class="upload-copy">
+      <div id="uploadTitle">Select an image to begin</div>
+      <span id="uploadHint">Drag it here or click to browse</span>
+    </div>
     <div class="saved-session" id="savedSession" hidden>
       <img id="savedSessionPreview" alt="Saved image preview">
       <span id="savedSessionName"></span>
@@ -166,16 +174,22 @@
     <div class="controls section-editor" id="brushControls">
       <div class="brush-control">Brush <input type="range" id="brushSize" min="4" max="90" value="26"></div>
       <div class="brush-control">Padding <input type="range" id="maskPad" min="0" max="60" value="18"></div>
+      <div class="brush-control">Mask <input type="range" id="maskOpacity" min="20" max="100" value="58"><span id="maskOpacityVal">58%</span></div>
       <button class="secondary small" id="undoBtn" disabled>Undo stroke</button>
       <button class="secondary small" id="undoActionBtn" disabled>Undo last action</button>
       <button class="secondary small" id="compareBtn" disabled title="Hold to see the image before the last action">Hold to compare</button>
+      <button class="secondary small" id="saveMaskBtn" disabled>Save mask</button>
+      <button class="secondary small" id="reuseMaskBtn" disabled>Reuse mask</button>
+      <button class="secondary small" id="clearMaskBtn" disabled>Clear mask</button>
       <button class="secondary small" id="clearBtn">New image</button>
     </div>
 
     <div class="row section-remove">
       <div class="status" id="status">Paint over the area to remove.</div>
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <progress class="fill-progress" id="fillProgress" value="0" max="100" hidden></progress>
+      <div class="remove-actions">
         <button id="fillBtn" disabled>Remove selection</button>
+        <button class="secondary" id="fillCancelBtn" hidden>Cancel</button>
         <select id="downloadFormat">
           <option value="png">PNG</option>
           <option value="jpeg">JPEG</option>
@@ -193,7 +207,8 @@
       <div class="field-row">
         <div class="brush-control">Edge feather <input type="range" id="featherRange" min="0" max="30" value="10"><span id="featherVal">10px</span></div>
       </div>
-      <p class="hint">Padding adds context around the selection. Feather softens AI edges.</p>
+      <div class="mask-status" id="maskStatus">No area selected</div>
+      <p class="hint">Paint over each watermark, then remove it. Padding adds context; feather softens AI edges.</p>
     </div>
 
     <div class="section-tools section-metadata" id="metadataSection">
@@ -249,20 +264,24 @@
 </div>
 
 <section class="about-grid" id="guide" aria-label="About Pixelroomedit">
+  <h2 class="about-faq-title">Frequently asked questions</h2>
   <article id="tools">
-    <p class="eyebrow">TOOLS</p>
-    <h2>What you can do</h2>
-    <p>Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill handles simple backgrounds, while AI Editor handles model-based edits on selected areas.</p>
+    <details>
+      <summary>What can I do with Pixelroomedit?</summary>
+      <p class="faq-body">Brush over distractions, erase mistakes, crop, rotate, compare changes, and download a PNG or JPEG. Quick fill handles simple backgrounds, while AI Editor handles model-based edits on selected areas.</p>
+    </details>
   </article>
   <article id="how-it-works">
-    <p class="eyebrow">HOW IT WORKS</p>
-    <h2>From photo to export</h2>
-    <p>Select a photo, paint over what should disappear, then choose Fill. The result is rendered in the browser and can be downloaded when it looks right.</p>
+    <details>
+      <summary>How does the editor work?</summary>
+      <p class="faq-body">Select a photo, paint over what should disappear, then choose Fill. The result is rendered in the browser and can be downloaded when it looks right.</p>
+    </details>
   </article>
   <article id="privacy">
-    <p class="eyebrow">PRIVACY</p>
-    <h2>Your image stays with you</h2>
-    <p>Photos and masks are processed locally in this browser. Nothing is uploaded. When enabled, Remove metadata strips EXIF details such as GPS data from the export.</p>
+    <details>
+      <summary>Is my photo uploaded anywhere?</summary>
+      <p class="faq-body">No. Photos and masks are processed locally in this browser and nothing is uploaded. When enabled, Remove metadata strips EXIF details such as GPS data from the export.</p>
+    </details>
   </article>
 </section>
 
@@ -272,6 +291,6 @@
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
-<script src="script.js?v=20260903.6"></script>
+<script src="script.js?v=20260904.2"></script>
 </body>
 </html>

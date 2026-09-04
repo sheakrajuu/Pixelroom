@@ -4,13 +4,13 @@
   "description": "Private browser-based photo editing.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#111417",
-  "theme_color": "#111417",
+  "background_color": "#ffffff",
+  "theme_color": "#5c72f9",
   "icons": [
     {
-      "src": "./favicon.svg?v=20260902.2",
+      "src": "./favicon.png?v=20260904.6",
       "sizes": "any",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

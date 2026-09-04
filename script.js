@@ -23,10 +23,18 @@
 
   const brushSizeInput = document.getElementById('brushSize');
   const maskPadInput = document.getElementById('maskPad');
+  const maskOpacityInput = document.getElementById('maskOpacity');
+  const maskOpacityVal = document.getElementById('maskOpacityVal');
   const featherRange = document.getElementById('featherRange');
   const featherVal = document.getElementById('featherVal');
 
   const fillBtn = document.getElementById('fillBtn');
+  const fillCancelBtn = document.getElementById('fillCancelBtn');
+  const fillProgress = document.getElementById('fillProgress');
+  const maskStatus = document.getElementById('maskStatus');
+  const saveMaskBtn = document.getElementById('saveMaskBtn');
+  const reuseMaskBtn = document.getElementById('reuseMaskBtn');
+  const clearMaskBtn = document.getElementById('clearMaskBtn');
   const undoBtn = document.getElementById('undoBtn');
   const undoActionBtn = document.getElementById('undoActionBtn');
   const compareBtn = document.getElementById('compareBtn');
@@ -125,6 +133,8 @@
   let aiResult = null;
   let sourceDimensions = null;
   let aiOperation = null;
+  let fillCancelled = false;
+  let savedMaskData = null;
   let aiOperationId = 0;
   let exportNumber = 0;
   try{ exportNumber = Number(localStorage.getItem('pixelroomedit-download-number')) || 0; }catch(e){}
@@ -293,6 +303,7 @@
       initialImageData = ctx.getImageData(0,0,w,h);
       maskCtx.clearRect(0,0,w,h);
       maskHistory = [];
+      savedMaskData = null;
       actionHistory = [];
       compareSnapshot = { w, h, data: initialImageData };
       hasMask = false;
@@ -376,6 +387,7 @@
     sectionChoices.forEach(choice => { choice.disabled = true; });
     originalImageData = null;
     initialImageData = null;
+    savedMaskData = null;
     compareSnapshot = null;
     sourceFile = null;
     sourceDimensions = null;
@@ -539,13 +551,28 @@
   function redrawWithMask(){
     if (!originalImageData) return;
     ctx.putImageData(originalImageData,0,0);
+    ctx.save();
+    ctx.globalAlpha = Number(maskOpacityInput.value) / 100;
     ctx.drawImage(maskCanvas,0,0);
+    ctx.restore();
   }
 
   function maskHasContent(){
     const d = maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height).data;
     for (let i=3; i<d.length; i+=4){ if (d[i] > 10) return true; }
     return false;
+  }
+
+  function updateMaskUi(){
+    hasMask = maskHasContent();
+    const bbox = hasMask ? maskBoundingBox(0) : null;
+    maskStatus.textContent = bbox ? `Selection ready — ${bbox.w} × ${bbox.h}px area` : 'No area selected';
+    fillBtn.disabled = !hasMask;
+    undoBtn.disabled = !maskHistory.length;
+    document.getElementById('saveMaskBtn').disabled = !hasMask;
+    document.getElementById('reuseMaskBtn').disabled = !savedMaskData;
+    document.getElementById('clearMaskBtn').disabled = !hasMask;
+    updateAiActionState();
   }
 
   let lastX = 0, lastY = 0;
@@ -630,22 +657,21 @@
     drawing = false;
     if (activeSection !== 'remove' && activeSection !== 'ai') return;
     hasMask = maskHasContent();
-    fillBtn.disabled = !hasMask;
-    updateAiActionState();
+    updateMaskUi();
   }
 
   canvas.addEventListener('pointerdown', startDraw);
   canvas.addEventListener('pointermove', moveDraw);
   canvas.addEventListener('pointerup', endDraw);
   canvas.addEventListener('pointercancel', endDraw);
+  canvas.addEventListener('lostpointercapture', endDraw);
 
   undoBtn.addEventListener('click', () => {
     if (!maskHistory.length) return;
     maskCtx.putImageData(maskHistory.pop(), 0, 0);
     redrawWithMask();
     hasMask = maskHasContent();
-    fillBtn.disabled = !hasMask;
-    updateAiActionState();
+    updateMaskUi();
     if (!maskHistory.length) undoBtn.disabled = true;
   });
 
@@ -854,6 +880,32 @@
   // Feather slider label
   // ============================================================
   featherRange.addEventListener('input', () => { featherVal.textContent = featherRange.value + 'px'; });
+  maskOpacityInput.addEventListener('input', () => {
+    maskOpacityVal.textContent = maskOpacityInput.value + '%';
+    redrawWithMask();
+  });
+  saveMaskBtn.addEventListener('click', () => {
+    if (!hasMask) return;
+    const current = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height);
+    savedMaskData = { width: current.width, height: current.height, data: new Uint8ClampedArray(current.data) };
+    updateMaskUi();
+    setStatus('Mask saved. Paint another area or reuse it on this image.');
+  });
+  reuseMaskBtn.addEventListener('click', () => {
+    if (!savedMaskData || savedMaskData.width !== maskCanvas.width || savedMaskData.height !== maskCanvas.height) return;
+    maskCtx.putImageData(new ImageData(new Uint8ClampedArray(savedMaskData.data), savedMaskData.width, savedMaskData.height), 0, 0);
+    maskHistory = [];
+    redrawWithMask();
+    updateMaskUi();
+    setStatus('Saved mask reused. Adjust it with the eraser if needed.');
+  });
+  clearMaskBtn.addEventListener('click', () => {
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskHistory = [];
+    redrawWithMask();
+    updateMaskUi();
+    setStatus('Selection cleared. Paint over the watermark to try again.');
+  });
 
   // ============================================================
   // Mask geometry helpers (shared by both fill engines)
@@ -908,6 +960,7 @@
       const y0 = Math.max(0, minY-pad), y1 = Math.min(h-1, maxY+pad);
       for (let y=y0+R; y<=y1-R; y+=stride){
         for (let x=x0+R; x<=x1-R; x+=stride){
+          if (fillCancelled) return list;
           let ok = true;
           for (let dy=-R; dy<=R && ok; dy+=2){
             for (let dx=-R; dx<=R; dx+=2){ if (!isKnown(x+dx,y+dy)){ ok=false; break; } }
@@ -933,6 +986,7 @@
     const N8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
     for (let y=Math.max(0,minY-1); y<=Math.min(h-1,maxY+1); y++){
       for (let x=Math.max(0,minX-1); x<=Math.min(w-1,maxX+1); x++){
+        if (fillCancelled) return null;
         const i = y*w+x;
         if (filled[i]) continue;
         for (const [dx,dy] of N8){ if (isKnown(x+dx,y+dy)){ front.add(i); break; } }
@@ -989,9 +1043,11 @@
     }
 
     let guard = 0;
+    const initialFrontSize = Math.max(1, front.size);
     const maxIter = maskCount * 2 + 500;
     let stepsSinceYield = 0;
     while (front.size > 0 && guard < maxIter){
+      if (fillCancelled) return null;
       guard++;
       const idx = pickBestFront();
       if (idx < 0) break;
@@ -1005,7 +1061,8 @@
       stepsSinceYield++;
       if (stepsSinceYield >= 12){
         stepsSinceYield = 0;
-        setStatus('Filling… (' + Math.max(0, front.size) + ' px left)');
+        fillProgress.value = Math.min(99, Math.round((1 - front.size / initialFrontSize) * 100));
+        setStatus('Filling… ' + fillProgress.value + '%');
         await new Promise(r => setTimeout(r, 0));
       }
     }
@@ -1519,9 +1576,18 @@
   // ============================================================
   // Fill button (dispatch to engine)
   // ============================================================
+  fillCancelBtn.addEventListener('click', () => {
+    fillCancelled = true;
+    fillCancelBtn.hidden = true;
+    setStatus('Canceling fill…');
+  });
   fillBtn.addEventListener('click', async () => {
     if (!originalImageData || !hasMask) return;
+    fillCancelled = false;
     fillBtn.disabled = true;
+    fillCancelBtn.hidden = false;
+    fillProgress.hidden = false;
+    fillProgress.value = 0;
     pushActionSnapshot();
     let result;
     try{
@@ -1530,11 +1596,16 @@
       setStatus('Fill failed: ' + err.message);
       actionHistory.pop();
       fillBtn.disabled = false;
+      fillCancelBtn.hidden = true;
+      fillProgress.hidden = true;
       return;
     }
     if (!result){
       actionHistory.pop();
       fillBtn.disabled = !hasMask;
+      fillCancelBtn.hidden = true;
+      fillProgress.hidden = true;
+      if (fillCancelled) setStatus('Fill canceled. Your selection is still available.');
       return;
     }
     ctx.putImageData(result, 0, 0);
@@ -1542,6 +1613,10 @@
     maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     maskHistory = []; hasMask = false;
     fillBtn.disabled = true; undoBtn.disabled = true;
+    fillCancelBtn.hidden = true;
+    fillProgress.value = 100;
+    fillProgress.hidden = true;
+    updateMaskUi();
     saveSession();
     setStatus('Selection removed. Inspect the result, then download.');
   });
